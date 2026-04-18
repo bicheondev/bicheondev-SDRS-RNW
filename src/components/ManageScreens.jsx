@@ -848,6 +848,11 @@ export function DataManagementShipEditScreen({
   const contentRef = useRef(null);
   const itemRefs = useRef(new Map());
   const previousCardIdsRef = useRef(cards.map((card) => card.id));
+  const keyboardBlurTimeoutRef = useRef(null);
+  const viewportBaseHeightRef = useRef(0);
+  const [keyboardFocused, setKeyboardFocused] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [viewportTop, setViewportTop] = useState(0);
   const [recentlyAddedCardId, setRecentlyAddedCardId] = useState(null);
   const visibleCards = normalizedQuery
     ? cards.filter((card) =>
@@ -900,6 +905,54 @@ export function DataManagementShipEditScreen({
     };
   }, [recentlyAddedCardId, reducedMotion, reorderEnabled]);
 
+  useEffect(
+    () => () => {
+      if (keyboardBlurTimeoutRef.current) {
+        clearTimeout(keyboardBlurTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!keyboardFocused) {
+      viewportBaseHeightRef.current = 0;
+      setKeyboardOpen(false);
+      setViewportTop(0);
+      return undefined;
+    }
+
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const viewport = window.visualViewport;
+
+    if (!viewport) {
+      return undefined;
+    }
+
+    const updateKeyboardState = () => {
+      viewportBaseHeightRef.current = Math.max(viewportBaseHeightRef.current, viewport.height);
+
+      const viewportBaseHeight = viewportBaseHeightRef.current || viewport.height;
+      const isKeyboardVisible = viewportBaseHeight - viewport.height > 80;
+
+      setKeyboardOpen(isKeyboardVisible);
+      setViewportTop(isKeyboardVisible ? viewport.offsetTop : 0);
+    };
+
+    updateKeyboardState();
+
+    viewport.addEventListener('resize', updateKeyboardState);
+    viewport.addEventListener('scroll', updateKeyboardState);
+
+    return () => {
+      viewport.removeEventListener('resize', updateKeyboardState);
+      viewport.removeEventListener('scroll', updateKeyboardState);
+    };
+  }, [keyboardFocused]);
+
   const setItemRef = (cardId) => (node) => {
     if (node) {
       itemRefs.current.set(cardId, node);
@@ -909,9 +962,40 @@ export function DataManagementShipEditScreen({
     itemRefs.current.delete(cardId);
   };
 
+  const handleFocusCapture = (event) => {
+    if (!(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) {
+      return;
+    }
+
+    if (keyboardBlurTimeoutRef.current) {
+      clearTimeout(keyboardBlurTimeoutRef.current);
+      keyboardBlurTimeoutRef.current = null;
+    }
+
+    setKeyboardFocused(true);
+  };
+
+  const handleBlurCapture = (event) => {
+    if (!(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) {
+      return;
+    }
+
+    keyboardBlurTimeoutRef.current = window.setTimeout(() => {
+      setKeyboardFocused(false);
+      keyboardBlurTimeoutRef.current = null;
+    }, 80);
+  };
+
   return (
     <main className="app-shell">
-      <section className="phone-screen phone-screen--manage-edit">
+      <section
+        className={`phone-screen phone-screen--manage-edit ${keyboardOpen ? 'phone-screen--manage-edit-keyboard-open' : ''}`.trim()}
+        style={{
+          '--manage-edit-viewport-top': `${viewportTop}px`,
+        }}
+        onFocusCapture={handleFocusCapture}
+        onBlurCapture={handleBlurCapture}
+      >
         <ManageSubpageTopBar title="선박 DB 편집하기" saveActive={dirty} onAdd={onAdd} onBack={onBack} onSave={dirty ? onSave : undefined} />
 
         {reorderEnabled ? (

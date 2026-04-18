@@ -360,9 +360,7 @@ function App() {
   const openSearch = () => {
     setTopBarHidden(false);
     setFilterSheet(null);
-    startTransition(() => {
-      setDatabaseView('search');
-    });
+    setDatabaseView('search');
   };
 
   const openFilter = (mode) => {

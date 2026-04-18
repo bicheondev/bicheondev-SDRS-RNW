@@ -419,6 +419,7 @@ img {
   position: relative;
   width: min(100%, var(--screen-width));
   min-height: min(calc(100dvh - 40px), var(--screen-height));
+  height: min(calc(100dvh - 40px), var(--screen-height));
   background: var(--color-bg-screen);
   overflow: hidden;
   box-shadow: var(--shadow-screen);
@@ -831,7 +832,9 @@ img {
 
 .main-content {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: var(--color-bg-card);
   padding-top: 88px;
   padding-bottom: 64px;
@@ -1825,6 +1828,7 @@ img {
   min-height: 0;
   margin-top: 28px;
   padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  scroll-padding-top: 116px;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -2542,6 +2546,13 @@ img {
   .phone-screen--login-keyboard-open .app-version {
     opacity: 0;
     pointer-events: none;
+  }
+
+  .phone-screen--manage-edit-keyboard-open .manage-subpage__top-bar {
+    position: fixed;
+    top: var(--manage-edit-viewport-top, 0px);
+    left: 0;
+    right: 0;
   }
 
   .bottom-tab {
