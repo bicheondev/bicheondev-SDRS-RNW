@@ -9,10 +9,9 @@ import {
   cloneDatabaseState,
   createEmptyDatabaseState,
   downloadBlob,
-  getVillageByPort,
   importImagesZipFile,
   importShipCsvFile,
-  importVillageCsvFile,
+  loadBundledDatabaseState,
   rebuildImageEntriesFromShips,
 } from './dataImport';
 import { loadStoredDatabaseState, saveStoredDatabaseState } from './dataStore';
@@ -36,9 +35,7 @@ const assets = {
   tabManageCompact: 'https://www.figma.com/api/mcp/asset/5ddbd099-3fc1-4db9-9981-0b1560ac9cfc',
   tabMenu: 'https://www.figma.com/api/mcp/asset/2d6f5b77-6480-40f7-b564-f94875651ba9',
   tabMenuCompact: 'https://www.figma.com/api/mcp/asset/6c30ea77-2f2c-450a-8711-6563ed2e7071',
-  external: 'https://www.figma.com/api/mcp/asset/7ef38d85-3819-49c0-be07-31fa5e05160d',
   back: 'https://www.figma.com/api/mcp/asset/646af1ba-5544-4da2-9365-9c818c86173c',
-  detailBack: 'https://www.figma.com/api/mcp/asset/a0fc3a38-caca-4963-a144-a9dc2233d627',
   searchBack: 'https://www.figma.com/api/mcp/asset/d005ba95-815f-4609-b7b6-59fb77aa3aef',
   searchCancel: 'https://www.figma.com/api/mcp/asset/2bdc2416-7cc9-4a40-922d-28741a32a789',
   arrowUp: 'https://www.figma.com/api/mcp/asset/31ea5b23-d727-40c2-a2df-717a477a8088',
@@ -72,7 +69,7 @@ const colorModeLabels = {
   dark: '다크',
 };
 
-const manageHomeSecondaryRows = ['DB 편집하기', 'DB 내보내기'];
+const manageHomeSecondaryRows = ['선박 DB 편집하기', 'DB 및 이미지 내보내기'];
 
 const emptyManageShipCard = {
   searchKey: '',
@@ -89,14 +86,6 @@ const emptyManageShipCard = {
   sonar: false,
   detector: true,
   selected: true,
-};
-
-const emptyManageVillageCard = {
-  searchKey: '',
-  title: '',
-  leader: '',
-  phone: '',
-  address: '',
 };
 
 const MIN_ZOOM_SCALE = 1;
@@ -174,14 +163,6 @@ function normalizeShipCardsForStorage(cards) {
   }));
 }
 
-function normalizeVillageCardsForStorage(cards) {
-  return cards.map((card) => ({
-    ...emptyManageVillageCard,
-    ...card,
-    searchKey: card.title,
-  }));
-}
-
 function getVesselTypeFromBusiness(business) {
   return business === '연안통발어업' || business === '수하식양식업' ? '어선' : '보트';
 }
@@ -222,31 +203,10 @@ function areManageShipCardsEqual(cardsA, cardsB) {
   });
 }
 
-function areManageVillageCardsEqual(cardsA, cardsB) {
-  if (cardsA.length !== cardsB.length) {
-    return false;
-  }
-
-  return cardsA.every((card, index) => {
-    const otherCard = cardsB[index];
-    if (!otherCard) {
-      return false;
-    }
-
-    return (
-      card.id === otherCard.id &&
-      card.title === otherCard.title &&
-      card.leader === otherCard.leader &&
-      card.phone === otherCard.phone &&
-      card.address === otherCard.address
-    );
-  });
-}
-
 function StatusIcon({ name, className = '' }) {
   return (
     <span className={`material-symbols-rounded status-icon ${className}`.trim()} aria-hidden="true">
-      {name === 'check' ? 'check' : 'close'}
+      {name}
     </span>
   );
 }
@@ -387,17 +347,12 @@ function TopBar({
   );
 }
 
-function InfoTable({ vessel, onPortClick }) {
+function InfoTable({ vessel }) {
   return (
     <div className="info-table">
       <div className="info-table__row">
         <div className="info-table__cell info-table__cell--label">항포구</div>
-        <div className="info-table__cell info-table__cell--value info-table__cell--link">
-          <button className="info-table__port-button" type="button" onClick={() => onPortClick(vessel.port)}>
-            <span className="info-table__link-text">{vessel.port}</span>
-          </button>
-          <span className="info-table__external">↗</span>
-        </div>
+        <div className="info-table__cell info-table__cell--value">{vessel.port}</div>
       </div>
       <div className="info-table__row">
         <div className="info-table__cell info-table__cell--label">업종</div>
@@ -438,7 +393,7 @@ function EquipmentTable({ vessel }) {
   );
 }
 
-function VesselCard({ vessel, onImageClick, onPortClick }) {
+function VesselCard({ vessel, onImageClick }) {
   return (
     <article className="vessel-card">
       <button
@@ -457,7 +412,7 @@ function VesselCard({ vessel, onImageClick, onPortClick }) {
         </div>
 
         <div className="vessel-card__tables">
-          <InfoTable vessel={vessel} onPortClick={onPortClick} />
+          <InfoTable vessel={vessel} />
           <EquipmentTable vessel={vessel} />
         </div>
       </div>
@@ -465,20 +420,11 @@ function VesselCard({ vessel, onImageClick, onPortClick }) {
   );
 }
 
-function CompactRow({ label, value, link, onClick }) {
+function CompactRow({ label, value }) {
   return (
     <div className="compact-detail__row">
       <div className="compact-detail__label">{label}</div>
-      <div className={`compact-detail__value ${link ? 'compact-detail__value--link' : ''}`}>
-        {link ? (
-          <button className="compact-detail__link-button" type="button" onClick={onClick}>
-            {value}
-          </button>
-        ) : (
-          value
-        )}
-        {link ? <img src={assets.external} alt="" /> : null}
-      </div>
+      <div className="compact-detail__value">{value}</div>
     </div>
   );
 }
@@ -494,7 +440,7 @@ function CompactEquipment({ label, active }) {
   );
 }
 
-function CompactVesselCard({ vessel, onImageClick, onPortClick }) {
+function CompactVesselCard({ vessel, onImageClick }) {
   return (
     <article className="compact-card">
       <div className="compact-card__summary">
@@ -513,7 +459,7 @@ function CompactVesselCard({ vessel, onImageClick, onPortClick }) {
       </div>
 
       <div className="compact-card__details">
-        <CompactRow label="항포구" value={vessel.port} link onClick={() => onPortClick(vessel.port)} />
+        <CompactRow label="항포구" value={vessel.port} />
         <CompactRow label="업종" value={vessel.business} />
         <CompactRow label="총톤수" value={vessel.tonnage} />
       </div>
@@ -1082,7 +1028,6 @@ function SearchScreen({
   onManageOpen,
   onMenuOpen,
   onQueryChange,
-  onPortClick,
   onToggleCompact,
 }) {
   const lowered = query.trim().toLowerCase();
@@ -1112,14 +1057,14 @@ function SearchScreen({
           ) : compact ? (
             filtered.map((vessel, index) => (
               <div key={vessel.id}>
-                <CompactVesselCard vessel={vessel} onImageClick={onImageClick} onPortClick={onPortClick} />
+                <CompactVesselCard vessel={vessel} onImageClick={onImageClick} />
                 {index < filtered.length - 1 ? <div className="section-divider" /> : null}
               </div>
             ))
           ) : (
             filtered.map((vessel, index) => (
               <div key={vessel.id}>
-                <VesselCard vessel={vessel} onImageClick={onImageClick} onPortClick={onPortClick} />
+                <VesselCard vessel={vessel} onImageClick={onImageClick} />
                 {index < filtered.length - 1 ? <div className="section-divider" /> : null}
               </div>
             ))
@@ -1144,7 +1089,6 @@ function FilterScreen({
   onImageClick,
   onManageOpen,
   onMenuOpen,
-  onPortClick,
   onSearchOpen,
   onToggleCompact,
   onVesselTypeSelect,
@@ -1245,20 +1189,20 @@ function FilterScreen({
           <div className="main-content main-content--filter">
             {filtered.length === 0 ? (
               <VesselEmptyState />
-            ) : compact ? (
-              filtered.map((vessel, index) => (
-                <div key={vessel.id}>
-                  <CompactVesselCard vessel={vessel} onImageClick={onImageClick} onPortClick={onPortClick} />
+          ) : compact ? (
+            filtered.map((vessel, index) => (
+              <div key={vessel.id}>
+                  <CompactVesselCard vessel={vessel} onImageClick={onImageClick} />
                   {index < filtered.length - 1 ? <div className="section-divider" /> : null}
-                </div>
-              ))
-            ) : (
-              filtered.map((vessel, index) => (
-                <div key={vessel.id}>
-                  <VesselCard vessel={vessel} onImageClick={onImageClick} onPortClick={onPortClick} />
+              </div>
+            ))
+          ) : (
+            filtered.map((vessel, index) => (
+              <div key={vessel.id}>
+                  <VesselCard vessel={vessel} onImageClick={onImageClick} />
                   {index < filtered.length - 1 ? <div className="section-divider" /> : null}
-                </div>
-              ))
+              </div>
+            ))
             )}
           </div>
         </div>
@@ -1316,47 +1260,6 @@ function FilterScreen({
         </div>
 
         <BottomTab activeTab="db" compact={compact} onDbClick={onClose} onManageClick={onManageOpen} onMenuClick={onMenuOpen} />
-      </section>
-    </main>
-  );
-}
-
-function PortDetailScreen({ onBack, village }) {
-  return (
-    <main className="app-shell">
-      <section className="phone-screen phone-screen--detail">
-        <header className="detail-top-bar">
-          <button className="detail-back-button" type="button" aria-label="뒤로가기" onClick={onBack}>
-            <img src={assets.detailBack} alt="" />
-          </button>
-        </header>
-
-        <h1 className="detail-screen__title">어촌계 정보</h1>
-
-        <div className="detail-screen__panel">
-          <h2 className="detail-screen__port-name">{village.title}</h2>
-
-          <div className="detail-screen__rows">
-            <div className="detail-screen__row">
-              <div className="detail-screen__label">어촌계장</div>
-              <div className="detail-screen__value">{village.leader || '-'}</div>
-            </div>
-            <div className="detail-screen__row">
-              <div className="detail-screen__label">연락처</div>
-              {village.phone ? (
-                <a className="detail-screen__value detail-screen__value--link" href={`tel:${village.phone.replace(/\D/g, '')}`}>
-                  {village.phone}
-                </a>
-              ) : (
-                <div className="detail-screen__value">-</div>
-              )}
-            </div>
-            <div className="detail-screen__row">
-              <div className="detail-screen__label">주소</div>
-              <div className="detail-screen__value">{village.address || '-'}</div>
-            </div>
-          </div>
-        </div>
       </section>
     </main>
   );
@@ -1487,23 +1390,22 @@ function DataManagementHomeRow({ label, onClick, tone = 'default', value }) {
 }
 
 function DataManagementHomeScreen({
+  importAlert,
   onDbOpen,
   onEditChooserOpen,
   onExport,
+  onImportAlertDismiss,
   onImagesImport,
   onMenuOpen,
   onShipImport,
-  onVillageImport,
   rows,
 }) {
-  const villageInputRef = useRef(null);
   const shipInputRef = useRef(null);
   const imagesInputRef = useRef(null);
 
   const primaryRowActions = {
-    '어촌계장 DB': () => villageInputRef.current?.click(),
-    '선박 DB': () => shipInputRef.current?.click(),
-    '이미지 압축 파일': () => imagesInputRef.current?.click(),
+    '선박 DB (.csv)': () => shipInputRef.current?.click(),
+    '이미지 압축 파일 (.zip)': () => imagesInputRef.current?.click(),
   };
 
   return (
@@ -1531,22 +1433,12 @@ function DataManagementHomeScreen({
               <DataManagementHomeRow
                 key={label}
                 label={label}
-                onClick={label === 'DB 편집하기' ? onEditChooserOpen : onExport}
+                onClick={label === '선박 DB 편집하기' ? onEditChooserOpen : onExport}
               />
             ))}
           </div>
         </div>
 
-        <input
-          ref={villageInputRef}
-          hidden
-          type="file"
-          accept=".csv,text/csv"
-          onChange={(event) => {
-            onVillageImport(event.target.files?.[0] ?? null);
-            event.target.value = '';
-          }}
-        />
         <input
           ref={shipInputRef}
           hidden
@@ -1569,6 +1461,17 @@ function DataManagementHomeScreen({
         />
 
         <BottomTab activeTab="manage" compact={false} onDbClick={onDbOpen} onManageClick={undefined} onMenuClick={onMenuOpen} />
+
+        {importAlert ? (
+          <ManageAlertModal
+            title={importAlert.title}
+            copy={importAlert.copy}
+            confirmLabel="확인"
+            confirmTone="neutral"
+            hideCancel
+            onConfirm={onImportAlertDismiss}
+          />
+        ) : null}
       </section>
     </main>
   );
@@ -1602,7 +1505,7 @@ function ManageSubpageTopBar({ saveActive = false, saveLabel = '저장', title, 
   );
 }
 
-function DataManagementEditMenuScreen({ onBack, onShipOpen, onVillageOpen }) {
+function DataManagementEditMenuScreen({ onBack, onShipOpen }) {
   return (
     <main className="app-shell">
       <section className="phone-screen phone-screen--menu-subpage phone-screen--manage-subpage">
@@ -1612,14 +1515,11 @@ function DataManagementEditMenuScreen({ onBack, onShipOpen, onVillageOpen }) {
           </button>
         </header>
 
-        <h1 className="manage-screen__title manage-screen__title--subpage">DB 편집하기</h1>
+        <h1 className="manage-screen__title manage-screen__title--subpage">선박 DB 편집하기</h1>
 
         <div className="manage-edit-menu">
           <button className="manage-edit-menu__row" type="button" onClick={onShipOpen}>
             선박 DB 편집하기
-          </button>
-          <button className="manage-edit-menu__row" type="button" onClick={onVillageOpen}>
-            어촌계 DB 편집하기
           </button>
         </div>
       </section>
@@ -1861,83 +1761,49 @@ function ManageShipCard({
   );
 }
 
-function ManageVillageCard({ card, editable = false, originalCard, onDelete, onFieldChange, showDeleteButton = false }) {
-  const baselineCard = originalCard ?? emptyManageVillageCard;
-  const titleEdited = editable ? card.title !== baselineCard.title : false;
-  const leaderEdited = editable ? card.leader !== baselineCard.leader : false;
-  const phoneEdited = editable ? card.phone !== baselineCard.phone : false;
-  const addressEdited = editable ? card.address !== baselineCard.address : false;
+function ManageAlertModal({
+  cancelLabel = '아니요',
+  confirmLabel = '네',
+  confirmTone = 'danger',
+  copy = '저장되지 않은 사항은 모두 삭제돼요.\n진행하시겠어요?',
+  hideCancel = false,
+  onCancel,
+  onConfirm,
+  title = '경고 사항',
+}) {
+  const confirmButtonClassName = [
+    'manage-discard-modal__button',
+    confirmTone === 'danger' ? 'manage-discard-modal__button--danger' : 'manage-discard-modal__button--neutral',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
-  return (
-    <article className="manage-village-card">
-      <ManageTextBox
-        edited={titleEdited}
-        fullWidth
-        onChange={(nextValue) => onFieldChange?.('title', nextValue)}
-        readOnly={!editable}
-        value={card.title}
-        variant="title"
-      />
-
-      <div className="manage-village-card__details">
-        <div className="manage-village-card__row">
-          <span className="manage-village-card__label">어촌계장</span>
-          <ManageFieldInput
-            edited={leaderEdited}
-            onChange={(nextValue) => onFieldChange?.('leader', nextValue)}
-            readOnly={!editable}
-            value={card.leader}
-          />
-        </div>
-        <div className="manage-village-card__row">
-          <span className="manage-village-card__label">연락처</span>
-          <ManageFieldInput
-            edited={phoneEdited}
-            onChange={(nextValue) => onFieldChange?.('phone', nextValue)}
-            readOnly={!editable}
-            value={card.phone}
-          />
-        </div>
-        <div className="manage-village-card__row">
-          <span className="manage-village-card__label">주소</span>
-          <ManageFieldInput
-            edited={addressEdited}
-            onChange={(nextValue) => onFieldChange?.('address', nextValue)}
-            readOnly={!editable}
-            value={card.address}
-          />
-        </div>
-      </div>
-
-      {showDeleteButton ? (
-        <button className="manage-ship-card__delete" type="button" aria-label="어촌계 삭제" onClick={onDelete}>
-          <DeleteIcon className="manage-ship-card__delete-icon" />
-        </button>
-      ) : null}
-    </article>
-  );
-}
-
-function ManageDiscardModal({ onCancel, onConfirm }) {
   return (
     <div className="manage-discard-modal">
       <div className="manage-discard-modal__scrim" />
       <div className="manage-discard-modal__card">
-        <h2 className="manage-discard-modal__title">경고 사항</h2>
-        <p className="manage-discard-modal__copy">
-          저장되지 않은 사항은 모두 삭제돼요.
-          <br />
-          진행하시겠어요?
-        </p>
+        <h2 className="manage-discard-modal__title">{title}</h2>
+        <p className="manage-discard-modal__copy">{copy}</p>
         <div className="manage-discard-modal__actions">
-          <button className="manage-discard-modal__button manage-discard-modal__button--ghost" type="button" onClick={onCancel}>
-            아니요
-          </button>
-          <button className="manage-discard-modal__button manage-discard-modal__button--danger" type="button" onClick={onConfirm}>
-            네
+          {!hideCancel ? (
+            <button className="manage-discard-modal__button manage-discard-modal__button--ghost" type="button" onClick={onCancel}>
+              {cancelLabel}
+            </button>
+          ) : null}
+          <button className={confirmButtonClassName} type="button" onClick={onConfirm}>
+            {confirmLabel}
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ManageSavedToast({ message }) {
+  return (
+    <div className="manage-saved-toast" role="status" aria-live="polite">
+      <StatusIcon name="check_circle" className="manage-saved-toast__icon" />
+      <span className="manage-saved-toast__message">{message}</span>
     </div>
   );
 }
@@ -1958,6 +1824,7 @@ function DataManagementShipEditScreen({
   onSearchClear,
   searchQuery,
   showDiscardModal,
+  toast,
 }) {
   const loweredQuery = searchQuery.trim().toLowerCase();
   const visibleCards = loweredQuery
@@ -1995,63 +1862,8 @@ function DataManagementShipEditScreen({
 
         <ManageSearchBar value={searchQuery} onChange={onSearchChange} onClear={onSearchClear} />
 
-        {showDiscardModal ? <ManageDiscardModal onCancel={onDismissDiscard} onConfirm={onConfirmDiscard} /> : null}
-      </section>
-    </main>
-  );
-}
-
-function DataManagementVillageEditScreen({
-  cards,
-  dirty,
-  originalCards,
-  onAdd,
-  onBack,
-  onConfirmDiscard,
-  onDelete,
-  onDismissDiscard,
-  onFieldChange,
-  onSave,
-  onSearchChange,
-  onSearchClear,
-  searchQuery,
-  showDiscardModal,
-}) {
-  const loweredQuery = searchQuery.trim().toLowerCase();
-  const visibleCards = loweredQuery
-    ? cards.filter((card) =>
-        [card.searchKey, card.title, card.leader, card.phone, card.address].some((value) =>
-          value.toLowerCase().includes(loweredQuery),
-        ),
-      )
-    : cards;
-
-  return (
-    <main className="app-shell">
-      <section className="phone-screen phone-screen--manage-edit">
-        <ManageSubpageTopBar title="어촌계 DB 편집하기" saveActive={dirty} onAdd={onAdd} onBack={onBack} onSave={dirty ? onSave : undefined} />
-
-        <div className="manage-edit-screen__content">
-          {visibleCards.map((card, index) => (
-            <div key={card.id}>
-              <div className="manage-edit-screen__section">
-                <ManageVillageCard
-                  card={card}
-                  editable
-                  originalCard={originalCards.find((item) => item.id === card.id)}
-                  showDeleteButton
-                  onDelete={() => onDelete(card.id)}
-                  onFieldChange={(field, value) => onFieldChange(card.id, field, value)}
-                />
-              </div>
-              {index < visibleCards.length - 1 ? <div className="section-divider" /> : null}
-            </div>
-          ))}
-        </div>
-
-        <ManageSearchBar placeholder="검색" value={searchQuery} onChange={onSearchChange} onClear={onSearchClear} />
-
-        {showDiscardModal ? <ManageDiscardModal onCancel={onDismissDiscard} onConfirm={onConfirmDiscard} /> : null}
+        {toast ? <ManageSavedToast key={toast.id} message={toast.message} /> : null}
+        {showDiscardModal ? <ManageAlertModal onCancel={onDismissDiscard} onConfirm={onConfirmDiscard} /> : null}
       </section>
     </main>
   );
@@ -2075,13 +1887,10 @@ function App() {
   const [manageShipSavedState, setManageShipSavedState] = useState([]);
   const [manageShipDirty, setManageShipDirty] = useState(false);
   const [manageShipSearch, setManageShipSearch] = useState('');
-  const [manageVillageCardsState, setManageVillageCardsState] = useState([]);
-  const [manageVillageSavedState, setManageVillageSavedState] = useState([]);
-  const [manageVillageDirty, setManageVillageDirty] = useState(false);
-  const [manageVillageSearch, setManageVillageSearch] = useState('');
   const [manageDiscardTarget, setManageDiscardTarget] = useState(null);
+  const [manageImportAlert, setManageImportAlert] = useState(null);
+  const [manageSaveToast, setManageSaveToast] = useState(null);
   const [topBarHidden, setTopBarHidden] = useState(false);
-  const [selectedPort, setSelectedPort] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [zoomedVessel, setZoomedVessel] = useState(null);
   const [harborFilter, setHarborFilter] = useState('전체 항포구');
@@ -2091,13 +1900,13 @@ function App() {
   const [password, setPassword] = useState('');
   const [focusedField, setFocusedField] = useState('');
   const mainContentRef = useRef(null);
+  const manageSaveToastTimeoutRef = useRef(null);
   const lastScrollTopRef = useRef(0);
   const mainScrollPositionRef = useRef(0);
   const displayVessels = buildDisplayVessels(databaseState.shipRecords);
   const filteredDisplayVessels = filterVessels(displayVessels, harborFilter, vesselTypeFilter);
   const harborOptions = buildHarborOptions(databaseState.shipRecords);
   const manageHomePrimaryRows = buildManageHomeRows(databaseState.files);
-  const selectedVillage = getVillageByPort(databaseState.villageRecords, selectedPort);
 
   const isFilled = username.trim() !== '' && password.trim() !== '';
 
@@ -2116,30 +1925,47 @@ function App() {
     };
   }, []);
 
+  useEffect(
+    () => () => {
+      if (manageSaveToastTimeoutRef.current) {
+        clearTimeout(manageSaveToastTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     let cancelled = false;
 
-    loadStoredDatabaseState()
-      .then((storedState) => {
-        if (cancelled) {
-          return;
-        }
+    const initializeDatabase = async () => {
+      let nextDatabase = null;
 
-        const nextDatabase = storedState ? cloneDatabaseState(storedState) : createEmptyDatabaseState();
-        nextDatabase.shipRecords = applyImagesToShipRecords(nextDatabase.shipRecords, nextDatabase.imageEntries);
-
-        setDatabaseState(nextDatabase);
-        setManageShipSavedState(cloneManageItems(nextDatabase.shipRecords));
-        setManageShipCardsState(cloneManageItems(nextDatabase.shipRecords));
-        setManageVillageSavedState(cloneManageItems(nextDatabase.villageRecords));
-        setManageVillageCardsState(cloneManageItems(nextDatabase.villageRecords));
-        setDatabaseReady(true);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setDatabaseReady(true);
+      try {
+        const storedState = await loadStoredDatabaseState();
+        nextDatabase = storedState ? cloneDatabaseState(storedState) : await loadBundledDatabaseState();
+      } catch (error) {
+        try {
+          nextDatabase = await loadBundledDatabaseState();
+        } catch (seedError) {
+          nextDatabase = createEmptyDatabaseState();
         }
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      nextDatabase.shipRecords = applyImagesToShipRecords(nextDatabase.shipRecords, nextDatabase.imageEntries, {
+        preserveExisting: true,
       });
+
+      setDatabaseState(nextDatabase);
+      setManageShipSavedState(cloneManageItems(nextDatabase.shipRecords));
+      setManageShipCardsState(cloneManageItems(nextDatabase.shipRecords));
+      setDatabaseReady(true);
+    };
+
+    initializeDatabase();
 
     return () => {
       cancelled = true;
@@ -2165,10 +1991,6 @@ function App() {
   useEffect(() => {
     setManageShipDirty(!areManageShipCardsEqual(manageShipCardsState, manageShipSavedState));
   }, [manageShipCardsState, manageShipSavedState]);
-
-  useEffect(() => {
-    setManageVillageDirty(!areManageVillageCardsEqual(manageVillageCardsState, manageVillageSavedState));
-  }, [manageVillageCardsState, manageVillageSavedState]);
 
   useLayoutEffect(() => {
     if (screen !== 'main' || !mainContentRef.current) {
@@ -2201,12 +2023,6 @@ function App() {
     lastScrollTopRef.current = currentScrollTop;
   };
 
-  const openPortDetail = (portName) => {
-    mainScrollPositionRef.current = mainContentRef.current?.scrollTop ?? mainScrollPositionRef.current;
-    setSelectedPort(portName);
-    setScreen('portDetail');
-  };
-
   const openSearch = () => {
     setTopBarHidden(false);
     setSearchQuery('');
@@ -2232,14 +2048,6 @@ function App() {
     setManageShipSearch('');
   };
 
-  const syncVillageEditor = (villageRecords) => {
-    const savedCards = cloneManageItems(villageRecords);
-    setManageVillageSavedState(savedCards);
-    setManageVillageCardsState(cloneManageItems(villageRecords));
-    setManageVillageDirty(false);
-    setManageVillageSearch('');
-  };
-
   const resetManageShip = () => {
     const initialCards = cloneManageItems(databaseState.shipRecords);
     setManageShipSavedState(initialCards);
@@ -2253,28 +2061,42 @@ function App() {
     setManageShipDirty(false);
   };
 
-  const resetManageVillage = () => {
-    const initialCards = cloneManageItems(databaseState.villageRecords);
-    setManageVillageSavedState(initialCards);
-    setManageVillageCardsState(cloneManageItems(databaseState.villageRecords));
-    setManageVillageDirty(false);
-    setManageVillageSearch('');
+  const showImportAlert = (error, fallbackCopy) => {
+    setManageImportAlert({
+      title: '불러오기 실패',
+      copy: error instanceof Error && error.message ? error.message : fallbackCopy,
+    });
   };
 
-  const restoreManageVillageSaved = () => {
-    setManageVillageCardsState(cloneManageItems(manageVillageSavedState));
-    setManageVillageDirty(false);
+  const hideManageSaveToast = () => {
+    setManageSaveToast(null);
+  };
+
+  const showManageSaveToast = (message) => {
+    const id = Date.now();
+
+    if (manageSaveToastTimeoutRef.current) {
+      clearTimeout(manageSaveToastTimeoutRef.current);
+    }
+
+    setManageSaveToast({ id, message });
+    manageSaveToastTimeoutRef.current = setTimeout(() => {
+      setManageSaveToast((current) => (current?.id === id ? null : current));
+      manageSaveToastTimeoutRef.current = null;
+    }, 2200);
   };
 
   const openManage = () => {
     setTopBarHidden(false);
     resetManageShip();
-    resetManageVillage();
     setManageDiscardTarget(null);
+    setManageImportAlert(null);
+    hideManageSaveToast();
     setScreen('manageHome');
   };
 
   const handleManageShipFieldChange = (cardId, field, value) => {
+    hideManageSaveToast();
     setManageShipCardsState((current) =>
       current.map((card) =>
         card.id === cardId
@@ -2290,21 +2112,8 @@ function App() {
     setManageShipDirty(true);
   };
 
-  const handleManageVillageFieldChange = (cardId, field, value) => {
-    setManageVillageCardsState((current) =>
-      current.map((card) =>
-        card.id === cardId
-          ? {
-              ...card,
-              ...(field === 'title' ? { searchKey: value } : {}),
-              [field]: value,
-            }
-          : card,
-      ),
-    );
-  };
-
   const handleManageShipAdd = () => {
+    hideManageSaveToast();
     setManageShipCardsState((current) => [
       ...current.map((card) => ({ ...card, selected: false })),
       {
@@ -2318,6 +2127,7 @@ function App() {
   };
 
   const handleManageShipDelete = (cardId) => {
+    hideManageSaveToast();
     setManageShipCardsState((current) => current.filter((card) => card.id !== cardId));
   };
 
@@ -2326,6 +2136,7 @@ function App() {
       return;
     }
 
+    hideManageSaveToast();
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result !== 'string') {
@@ -2358,7 +2169,9 @@ function App() {
     const imagesChanged = !areImageEntriesEqual(nextImageEntries, nextDatabase.imageEntries);
 
     nextDatabase.imageEntries = nextImageEntries;
-    nextDatabase.shipRecords = applyImagesToShipRecords(nextShipRecords, nextImageEntries);
+    nextDatabase.shipRecords = applyImagesToShipRecords(nextShipRecords, nextImageEntries, {
+      preserveExisting: true,
+    });
     nextDatabase.files.ship = {
       ...nextDatabase.files.ship,
       imported: shipImported,
@@ -2372,37 +2185,7 @@ function App() {
 
     setDatabaseState(nextDatabase);
     syncShipEditor(nextDatabase.shipRecords);
-  };
-
-  const handleManageVillageAdd = () => {
-    setManageVillageCardsState((current) => [
-      ...current,
-      {
-        id: `village-${Date.now()}`,
-        ...emptyManageVillageCard,
-      },
-    ]);
-    setManageVillageSearch('');
-  };
-
-  const handleManageVillageDelete = (cardId) => {
-    setManageVillageCardsState((current) => current.filter((card) => card.id !== cardId));
-  };
-
-  const handleManageVillageSave = () => {
-    const nextVillageRecords = normalizeVillageCardsForStorage(manageVillageCardsState);
-    const nextDatabase = cloneDatabaseState(databaseState);
-    const villageImported = nextDatabase.files.village.imported || nextVillageRecords.length > 0;
-
-    nextDatabase.villageRecords = nextVillageRecords;
-    nextDatabase.files.village = {
-      ...nextDatabase.files.village,
-      imported: villageImported,
-      modified: villageImported,
-    };
-
-    setDatabaseState(nextDatabase);
-    syncVillageEditor(nextDatabase.villageRecords);
+    showManageSaveToast('DB가 업데이트되었어요.');
   };
 
   const handleShipImport = async (file) => {
@@ -2410,38 +2193,25 @@ function App() {
       return;
     }
 
-    const { fileName, shipRecords } = await importShipCsvFile(file, databaseState.imageEntries);
-    const nextDatabase = cloneDatabaseState(databaseState);
+    setManageImportAlert(null);
 
-    nextDatabase.shipRecords = shipRecords;
-    nextDatabase.files.ship = {
-      name: fileName,
-      imported: true,
-      modified: false,
-    };
+    try {
+      const { fileName, shipRecords } = await importShipCsvFile(file, databaseState.imageEntries);
+      const nextDatabase = cloneDatabaseState(databaseState);
 
-    setDatabaseState(nextDatabase);
-    syncShipEditor(nextDatabase.shipRecords);
-    setHarborFilter('전체 항포구');
-  };
+      nextDatabase.shipRecords = shipRecords;
+      nextDatabase.files.ship = {
+        name: fileName,
+        imported: true,
+        modified: false,
+      };
 
-  const handleVillageImport = async (file) => {
-    if (!file) {
-      return;
+      setDatabaseState(nextDatabase);
+      syncShipEditor(nextDatabase.shipRecords);
+      setHarborFilter('전체 항포구');
+    } catch (error) {
+      showImportAlert(error, '선박 DB를 불러오지 못했어요.\n파일 형식을 확인해 주세요.');
     }
-
-    const { fileName, villageRecords } = await importVillageCsvFile(file);
-    const nextDatabase = cloneDatabaseState(databaseState);
-
-    nextDatabase.villageRecords = villageRecords;
-    nextDatabase.files.village = {
-      name: fileName,
-      imported: true,
-      modified: false,
-    };
-
-    setDatabaseState(nextDatabase);
-    syncVillageEditor(nextDatabase.villageRecords);
   };
 
   const handleImagesImport = async (file) => {
@@ -2449,19 +2219,25 @@ function App() {
       return;
     }
 
-    const { fileName, imageEntries } = await importImagesZipFile(file);
-    const nextDatabase = cloneDatabaseState(databaseState);
+    setManageImportAlert(null);
 
-    nextDatabase.imageEntries = imageEntries;
-    nextDatabase.shipRecords = applyImagesToShipRecords(nextDatabase.shipRecords, imageEntries);
-    nextDatabase.files.images = {
-      name: fileName,
-      imported: true,
-      modified: false,
-    };
+    try {
+      const { fileName, imageEntries } = await importImagesZipFile(file);
+      const nextDatabase = cloneDatabaseState(databaseState);
 
-    setDatabaseState(nextDatabase);
-    syncShipEditor(nextDatabase.shipRecords);
+      nextDatabase.imageEntries = imageEntries;
+      nextDatabase.shipRecords = applyImagesToShipRecords(nextDatabase.shipRecords, imageEntries);
+      nextDatabase.files.images = {
+        name: fileName,
+        imported: true,
+        modified: false,
+      };
+
+      setDatabaseState(nextDatabase);
+      syncShipEditor(nextDatabase.shipRecords);
+    } catch (error) {
+      showImportAlert(error, '이미지 압축 파일을 불러오지 못했어요.\n파일 형식을 확인해 주세요.');
+    }
   };
 
   const handleExportDatabase = async () => {
@@ -2474,6 +2250,10 @@ function App() {
   };
 
   const enterMainScreen = () => {
+    if (!databaseReady) {
+      return;
+    }
+
     mainScrollPositionRef.current = 0;
     lastScrollTopRef.current = 0;
     setTopBarHidden(false);
@@ -2527,10 +2307,10 @@ function App() {
             <button
               className={`login-button ${isFilled ? 'login-button--active' : ''}`}
               type="button"
-              disabled={!isFilled}
+              disabled={!isFilled || !databaseReady}
               onClick={enterMainScreen}
             >
-              로그인
+              {databaseReady ? '로그인' : '기본 데이터 불러오는 중...'}
             </button>
           </section>
         </main>
@@ -2558,14 +2338,14 @@ function App() {
               ) : compact ? (
                 filteredDisplayVessels.map((vessel, index) => (
                   <div key={vessel.id}>
-                    <CompactVesselCard vessel={vessel} onImageClick={openImageZoom} onPortClick={openPortDetail} />
+                    <CompactVesselCard vessel={vessel} onImageClick={openImageZoom} />
                     {index < filteredDisplayVessels.length - 1 ? <div className="section-divider" /> : null}
                   </div>
                 ))
               ) : (
                 filteredDisplayVessels.map((vessel, index) => (
                   <div key={vessel.id}>
-                    <VesselCard vessel={vessel} onImageClick={openImageZoom} onPortClick={openPortDetail} />
+                    <VesselCard vessel={vessel} onImageClick={openImageZoom} />
                     {index < filteredDisplayVessels.length - 1 ? <div className="section-divider" /> : null}
                   </div>
                 ))
@@ -2579,13 +2359,14 @@ function App() {
 
       <PersistedScreen active={screen === 'manageHome'}>
         <DataManagementHomeScreen
+          importAlert={manageImportAlert}
           onDbOpen={() => setScreen('main')}
           onEditChooserOpen={() => setScreen('manageEditMenu')}
           onExport={handleExportDatabase}
+          onImportAlertDismiss={() => setManageImportAlert(null)}
           onImagesImport={handleImagesImport}
           onMenuOpen={openMenu}
           onShipImport={handleShipImport}
-          onVillageImport={handleVillageImport}
           rows={manageHomePrimaryRows}
         />
       </PersistedScreen>
@@ -2594,7 +2375,6 @@ function App() {
         <DataManagementEditMenuScreen
           onBack={() => setScreen('manageHome')}
           onShipOpen={() => setScreen('manageShipEdit')}
-          onVillageOpen={() => setScreen('manageVillageEdit')}
         />
       </PersistedScreen>
 
@@ -2626,41 +2406,8 @@ function App() {
           onSearchClear={() => setManageShipSearch('')}
           searchQuery={manageShipSearch}
           showDiscardModal={manageDiscardTarget === 'ship'}
+          toast={manageSaveToast}
         />
-      </PersistedScreen>
-
-      <PersistedScreen active={screen === 'manageVillageEdit'}>
-        <DataManagementVillageEditScreen
-          cards={manageVillageCardsState}
-          dirty={manageVillageDirty}
-          originalCards={manageVillageSavedState}
-          onAdd={handleManageVillageAdd}
-          onBack={() => {
-            if (manageVillageDirty) {
-              setManageDiscardTarget('village');
-              return;
-            }
-
-            setScreen('manageEditMenu');
-          }}
-          onConfirmDiscard={() => {
-            setManageDiscardTarget(null);
-            restoreManageVillageSaved();
-            setScreen('manageEditMenu');
-          }}
-          onDelete={handleManageVillageDelete}
-          onDismissDiscard={() => setManageDiscardTarget(null)}
-          onFieldChange={handleManageVillageFieldChange}
-          onSave={handleManageVillageSave}
-          onSearchChange={setManageVillageSearch}
-          onSearchClear={() => setManageVillageSearch('')}
-          searchQuery={manageVillageSearch}
-          showDiscardModal={manageDiscardTarget === 'village'}
-        />
-      </PersistedScreen>
-
-      <PersistedScreen active={screen === 'portDetail'}>
-        <PortDetailScreen onBack={() => setScreen('main')} village={selectedVillage} />
       </PersistedScreen>
 
       <PersistedScreen active={screen === 'search'}>
@@ -2674,7 +2421,6 @@ function App() {
           onManageOpen={openManage}
           onMenuOpen={openMenu}
           onQueryChange={setSearchQuery}
-          onPortClick={openPortDetail}
           onToggleCompact={setCompact}
         />
       </PersistedScreen>
@@ -2692,7 +2438,6 @@ function App() {
           onImageClick={openImageZoom}
           onManageOpen={openManage}
           onMenuOpen={openMenu}
-          onPortClick={openPortDetail}
           onSearchOpen={openSearch}
           onToggleCompact={setCompact}
           onVesselTypeSelect={setVesselTypeFilter}

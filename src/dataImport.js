@@ -1,12 +1,17 @@
 import JSZip from 'jszip';
 import noImagePlaceholder from '../no-image.svg';
+import defaultImagesZipUrl from '../images.zip?url';
+import defaultShipCsvUrl from '../ship.csv?url';
 
 const SHIP_HEADERS = ['번호', '어선번호', '어선명', '어선총톤수', '성명', '연락처', '업종', '선적항', '소나', '어군 탐지기'];
-const VILLAGE_HEADERS = ['어촌계', '성명', '주소', '전화번호'];
+const SUPPORTED_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'svg', 'gif']);
 const DEFAULT_FILE_META = {
   ship: { name: 'ship.csv', imported: false, modified: false },
-  village: { name: 'village.csv', imported: false, modified: false },
   images: { name: 'images.zip', imported: false, modified: false },
+};
+const DEFAULT_BUNDLED_FILES = {
+  ship: { url: defaultShipCsvUrl, name: 'ship.csv', type: 'text/csv' },
+  images: { url: defaultImagesZipUrl, name: 'images.zip', type: 'application/zip' },
 };
 
 function createId(prefix) {
@@ -53,19 +58,18 @@ function parseCsvLine(line) {
   return cells.map((cell) => cell.trim());
 }
 
-function parseCsvText(text) {
+function parseCsvDocument(text) {
   const lines = stripBom(text)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
 
   if (lines.length === 0) {
-    return [];
+    return { headers: [], rows: [] };
   }
 
   const headers = parseCsvLine(lines[0]);
-
-  return lines.slice(1).map((line) => {
+  const rows = lines.slice(1).map((line) => {
     const values = parseCsvLine(line);
 
     return headers.reduce((record, header, index) => {
@@ -73,6 +77,8 @@ function parseCsvText(text) {
       return record;
     }, {});
   });
+
+  return { headers, rows };
 }
 
 function encodeCsvValue(value) {
@@ -124,6 +130,77 @@ function decodeCsvBuffer(buffer) {
   return new TextDecoder().decode(buffer);
 }
 
+function createImportError(message) {
+  return new Error(message);
+}
+
+async function fetchBundledFile({ url, name, type }) {
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw createImportError(`${name} 기본 파일을 불러오지 못했어요.`);
+  }
+
+  const blob = await response.blob();
+  return new File([blob], name, { type: blob.type || type });
+}
+
+function validateHeaders(actualHeaders, expectedHeaders, label) {
+  const hasExactHeaderMatch =
+    actualHeaders.length === expectedHeaders.length &&
+    expectedHeaders.every((header, index) => actualHeaders[index] === header);
+
+  if (!hasExactHeaderMatch) {
+    throw createImportError(`${label} 형식이 올바르지 않아요.\n내보낸 DB 헤더와 같은 CSV 파일만 불러올 수 있어요.`);
+  }
+}
+
+function isBlank(value) {
+  return String(value ?? '').trim() === '';
+}
+
+function isIntegerLike(value) {
+  return /^\d+$/.test(String(value ?? '').trim());
+}
+
+function isNumberLike(value) {
+  return /^\d+(?:\.\d+)?$/.test(String(value ?? '').trim());
+}
+
+function isPhoneLike(value) {
+  return /^[\d\s()+-]+$/.test(String(value ?? '').trim());
+}
+
+function isBinaryLike(value) {
+  return /^[01]$/.test(String(value ?? '').trim());
+}
+
+function validateShipRows(rows) {
+  rows.forEach((row, index) => {
+    const lineNumber = index + 2;
+
+    if (!isBlank(row['번호']) && !isIntegerLike(row['번호'])) {
+      throw createImportError(`선박 DB ${lineNumber}행의 번호 형식이 올바르지 않아요.\n숫자만 입력되어 있는지 확인해 주세요.`);
+    }
+
+    if (!isBlank(row['어선총톤수']) && !isNumberLike(row['어선총톤수'])) {
+      throw createImportError(`선박 DB ${lineNumber}행의 어선총톤수 형식이 올바르지 않아요.\n숫자 형식인지 확인해 주세요.`);
+    }
+
+    if (!isBlank(row['연락처']) && !isPhoneLike(row['연락처'])) {
+      throw createImportError(`선박 DB ${lineNumber}행의 연락처 형식이 올바르지 않아요.\n전화번호 형식만 사용할 수 있어요.`);
+    }
+
+    if (!isBlank(row['소나']) && !isBinaryLike(row['소나'])) {
+      throw createImportError(`선박 DB ${lineNumber}행의 소나 값이 올바르지 않아요.\n0 또는 1만 사용할 수 있어요.`);
+    }
+
+    if (!isBlank(row['어군 탐지기']) && !isBinaryLike(row['어군 탐지기'])) {
+      throw createImportError(`선박 DB ${lineNumber}행의 어군 탐지기 값이 올바르지 않아요.\n0 또는 1만 사용할 수 있어요.`);
+    }
+  });
+}
+
 function getMimeTypeFromFileName(fileName) {
   const lowered = fileName.toLowerCase();
 
@@ -139,8 +216,11 @@ function getMimeTypeFromFileName(fileName) {
   if (lowered.endsWith('.gif')) {
     return 'image/gif';
   }
+  if (lowered.endsWith('.jpg') || lowered.endsWith('.jpeg')) {
+    return 'image/jpeg';
+  }
 
-  return 'image/jpeg';
+  return '';
 }
 
 function getExtensionFromMimeType(mimeType) {
@@ -205,19 +285,6 @@ function createShipRecord(row, imageEntries) {
   };
 }
 
-function createVillageRecord(row) {
-  const title = String(row['어촌계'] ?? '').trim();
-
-  return {
-    id: createId('village'),
-    searchKey: title,
-    title,
-    leader: String(row['성명'] ?? '').trim(),
-    address: String(row['주소'] ?? '').trim(),
-    phone: formatPhoneNumber(row['전화번호'] ?? ''),
-  };
-}
-
 function arrayBufferToDataUrl(buffer, mimeType) {
   let binary = '';
   const bytes = new Uint8Array(buffer);
@@ -244,11 +311,9 @@ function dataUrlToUint8Array(dataUrl) {
 export function createEmptyDatabaseState() {
   return {
     shipRecords: [],
-    villageRecords: [],
     imageEntries: [],
     files: {
       ship: { ...DEFAULT_FILE_META.ship },
-      village: { ...DEFAULT_FILE_META.village },
       images: { ...DEFAULT_FILE_META.images },
     },
   };
@@ -256,13 +321,11 @@ export function createEmptyDatabaseState() {
 
 export function cloneDatabaseState(state) {
   return {
-    shipRecords: state.shipRecords.map((record) => ({ ...record })),
-    villageRecords: state.villageRecords.map((record) => ({ ...record })),
-    imageEntries: state.imageEntries.map((entry) => ({ ...entry })),
+    shipRecords: Array.isArray(state?.shipRecords) ? state.shipRecords.map((record) => ({ ...record })) : [],
+    imageEntries: Array.isArray(state?.imageEntries) ? state.imageEntries.map((entry) => ({ ...entry })) : [],
     files: {
-      ship: { ...DEFAULT_FILE_META.ship, ...(state.files?.ship ?? {}) },
-      village: { ...DEFAULT_FILE_META.village, ...(state.files?.village ?? {}) },
-      images: { ...DEFAULT_FILE_META.images, ...(state.files?.images ?? {}) },
+      ship: { ...DEFAULT_FILE_META.ship, ...(state?.files?.ship ?? {}) },
+      images: { ...DEFAULT_FILE_META.images, ...(state?.files?.images ?? {}) },
     },
   };
 }
@@ -280,22 +343,37 @@ export function findImageEntryForRegistration(imageEntries, registration) {
   );
 }
 
-export function applyImagesToShipRecords(shipRecords, imageEntries) {
+export function applyImagesToShipRecords(shipRecords, imageEntries, options = {}) {
+  const { preserveExisting = false } = options;
+
   return shipRecords.map((record) => {
     const matchedImage = findImageEntryForRegistration(imageEntries, record.registration);
+    const hasExistingImage = !isPlaceholderImage(record.image);
+
+    if (!matchedImage && preserveExisting && hasExistingImage) {
+      return {
+        ...record,
+        image: record.image,
+        imageFileName: record.imageFileName ?? '',
+        imageMimeType: record.imageMimeType || getMimeTypeFromDataUrl(record.image),
+      };
+    }
 
     return {
       ...record,
       image: matchedImage?.dataUrl ?? noImagePlaceholder,
       imageFileName: matchedImage?.fileName ?? '',
-      imageMimeType: matchedImage?.mimeType ?? '',
+      imageMimeType: matchedImage?.mimeType ?? (matchedImage ? getMimeTypeFromDataUrl(matchedImage.dataUrl) : ''),
     };
   });
 }
 
 export async function importShipCsvFile(file, imageEntries = []) {
   const buffer = await file.arrayBuffer();
-  const rows = parseCsvText(decodeCsvBuffer(buffer));
+  const { headers, rows } = parseCsvDocument(decodeCsvBuffer(buffer));
+
+  validateHeaders(headers, SHIP_HEADERS, '선박 DB');
+  validateShipRows(rows);
 
   return {
     fileName: file.name || 'ship.csv',
@@ -303,18 +381,15 @@ export async function importShipCsvFile(file, imageEntries = []) {
   };
 }
 
-export async function importVillageCsvFile(file) {
-  const buffer = await file.arrayBuffer();
-  const rows = parseCsvText(decodeCsvBuffer(buffer));
-
-  return {
-    fileName: file.name || 'village.csv',
-    villageRecords: rows.map(createVillageRecord),
-  };
-}
-
 export async function importImagesZipFile(file) {
-  const zip = await JSZip.loadAsync(file);
+  let zip;
+
+  try {
+    zip = await JSZip.loadAsync(file);
+  } catch (error) {
+    throw createImportError('이미지 압축 파일 형식이 올바르지 않아요.\nZIP 파일만 불러올 수 있어요.');
+  }
+
   const imageEntries = [];
 
   await Promise.all(
@@ -324,6 +399,12 @@ export async function importImagesZipFile(file) {
       }
 
       const mimeType = getMimeTypeFromFileName(entry.name);
+      const extension = getExtensionFromFileName(entry.name);
+
+      if (!SUPPORTED_IMAGE_EXTENSIONS.has(extension) || !mimeType.startsWith('image/')) {
+        throw createImportError('이미지 압축 파일 형식이 올바르지 않아요.\nZIP 안에는 이미지 파일만 넣어 주세요.');
+      }
+
       const dataUrl = arrayBufferToDataUrl(await entry.async('arraybuffer'), mimeType);
 
       imageEntries.push({
@@ -346,6 +427,33 @@ export async function importImagesZipFile(file) {
       normalized.registration = registrationMatch?.[0] ?? '';
       return normalized;
     }),
+  };
+}
+
+export async function loadBundledDatabaseState(files = DEFAULT_BUNDLED_FILES) {
+  const [shipFile, imagesFile] = await Promise.all([
+    fetchBundledFile(files.ship),
+    fetchBundledFile(files.images),
+  ]);
+
+  const { fileName: imagesFileName, imageEntries } = await importImagesZipFile(imagesFile);
+  const shipResult = await importShipCsvFile(shipFile, imageEntries);
+
+  return {
+    shipRecords: shipResult.shipRecords,
+    imageEntries,
+    files: {
+      ship: {
+        name: shipResult.fileName,
+        imported: true,
+        modified: false,
+      },
+      images: {
+        name: imagesFileName,
+        imported: true,
+        modified: false,
+      },
+    },
   };
 }
 
@@ -375,9 +483,8 @@ export function rebuildImageEntriesFromShips(shipRecords) {
 
 export function buildManageHomeRows(files) {
   return [
-    buildFileRow('어촌계장 DB', files.village),
-    buildFileRow('선박 DB', files.ship),
-    buildFileRow('이미지 압축 파일', files.images),
+    buildFileRow('선박 DB (.csv)', files.ship),
+    buildFileRow('이미지 압축 파일 (.zip)', files.images),
   ];
 }
 
@@ -416,21 +523,6 @@ export function buildHarborOptions(shipRecords) {
   return ['전체 항포구', ...ports];
 }
 
-export function getVillageByPort(villageRecords, portName) {
-  const matchedVillage = villageRecords.find((record) => record.title === portName);
-
-  if (matchedVillage) {
-    return matchedVillage;
-  }
-
-  return {
-    title: portName,
-    leader: '',
-    phone: '',
-    address: '',
-  };
-}
-
 export async function buildDatabaseExportBlob(databaseState) {
   const zip = new JSZip();
   const shipRows = databaseState.shipRecords.map((record, index) => ({
@@ -445,15 +537,7 @@ export async function buildDatabaseExportBlob(databaseState) {
     소나: record.sonar ? '1' : '0',
     '어군 탐지기': record.detector ? '1' : '0',
   }));
-  const villageRows = databaseState.villageRecords.map((record) => ({
-    어촌계: record.title,
-    성명: record.leader,
-    주소: record.address,
-    전화번호: compactPhoneNumber(record.phone),
-  }));
-
   zip.file('ship.csv', `\uFEFF${serializeCsv(SHIP_HEADERS, shipRows)}`);
-  zip.file('village.csv', `\uFEFF${serializeCsv(VILLAGE_HEADERS, villageRows)}`);
 
   const imagesZip = new JSZip();
   for (const entry of databaseState.imageEntries) {
