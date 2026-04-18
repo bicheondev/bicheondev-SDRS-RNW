@@ -7,6 +7,47 @@ import { getModalBackdropMotion, getModalCardMotion, getPressMotion, getToastMot
 import { assets, manageHomeSecondaryRows } from '../uiAssets';
 import { DeleteIcon, PlusIcon, StatusIcon } from './Icons';
 
+function getManageListItemMotion(reducedMotion, isEntering = false) {
+  if (reducedMotion) {
+    return {
+      initial: isEntering ? { opacity: 0, height: 0 } : false,
+      animate: { opacity: 1, height: 'auto' },
+      exit: { opacity: 0, height: 0 },
+      transition: { duration: isEntering ? 0.16 : 0.1, ease: 'linear' },
+    };
+  }
+
+  return {
+    initial: isEntering
+      ? {
+          opacity: 0,
+          height: 0,
+          scale: 0.992,
+          y: 14,
+          filter: 'blur(2px)',
+        }
+      : false,
+    animate: {
+      opacity: 1,
+      height: 'auto',
+      scale: 1,
+      y: 0,
+      filter: 'blur(0px)',
+    },
+    exit: {
+      opacity: 0,
+      height: 0,
+      scale: 0.994,
+      y: -6,
+      filter: 'blur(1.5px)',
+    },
+    transition: {
+      duration: isEntering ? 0.22 : 0.14,
+      ease: [0.22, 1, 0.36, 1],
+    },
+  };
+}
+
 function DataManagementHomeRow({ label, onClick, tone = 'default', value }) {
   const Tag = onClick ? motion.button : 'div';
 
@@ -163,7 +204,7 @@ function ManageSubpageTopBar({ saveActive = false, saveLabel = '저장', title, 
             onClick={onSave}
             {...getPressMotion('button', { enabled: saveActive })}
           >
-            {saveLabel}
+            <span className="manage-subpage__save-label">{saveLabel}</span>
           </motion.button>
         </div>
       </header>
@@ -406,17 +447,21 @@ function ManageShipCard({
 function ManageShipReorderItem({
   card,
   originalCard,
+  itemRef,
+  isEntering = false,
   onDelete,
   onFieldChange,
   onImageChange,
   showDivider = false,
 }) {
   const reducedMotion = useReducedMotion() ?? false;
+  const listItemMotion = getManageListItemMotion(reducedMotion, isEntering);
   const dragControls = useDragControls();
   const longPressTimerRef = useRef(null);
   const pointerIdRef = useRef(null);
   const pointerStartRef = useRef({ x: 0, y: 0 });
   const dragStartedRef = useRef(false);
+  const [isArmed, setIsArmed] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
   const clearLongPressTimer = () => {
@@ -430,6 +475,7 @@ function ManageShipReorderItem({
     clearLongPressTimer();
     pointerIdRef.current = null;
     dragStartedRef.current = false;
+    setIsArmed(false);
   };
 
   useEffect(() => resetLongPressState, []);
@@ -452,6 +498,10 @@ function ManageShipReorderItem({
       }
 
       dragStartedRef.current = true;
+      setIsArmed(true);
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        navigator.vibrate(12);
+      }
       dragControls.start(nativeEvent, { snapToCursor: false });
     }, 260);
   };
@@ -479,7 +529,7 @@ function ManageShipReorderItem({
   };
 
   return (
-    <div className="manage-edit-screen__reorder-entry">
+    <motion.div ref={itemRef} className="manage-edit-screen__reorder-entry" layout {...listItemMotion}>
       <Reorder.Item
         as="div"
         className={`manage-edit-screen__reorder-item ${isDragging ? 'manage-edit-screen__reorder-item--dragging' : ''}`.trim()}
@@ -496,7 +546,9 @@ function ManageShipReorderItem({
       >
         <div className="manage-edit-screen__section">
           <button
-            className={`manage-ship-card__reorder-handle interaction-reset ${isDragging ? 'manage-ship-card__reorder-handle--dragging' : ''}`.trim()}
+            className={`manage-ship-card__reorder-handle interaction-reset ${
+              isArmed || isDragging ? 'manage-ship-card__reorder-handle--dragging' : ''
+            }`.trim()}
             type="button"
             aria-label="길게 눌러 선박 순서 변경"
             onContextMenu={(event) => event.preventDefault()}
@@ -525,7 +577,7 @@ function ManageShipReorderItem({
       </Reorder.Item>
 
       {showDivider ? <div className="section-divider" /> : null}
-    </div>
+    </motion.div>
   );
 }
 
@@ -790,8 +842,13 @@ export function DataManagementShipEditScreen({
   onSearchChange,
   onSearchClear,
 }) {
+  const reducedMotion = useReducedMotion() ?? false;
   const normalizedQuery = searchQuery.trim();
   const reorderEnabled = normalizedQuery === '';
+  const contentRef = useRef(null);
+  const itemRefs = useRef(new Map());
+  const previousCardIdsRef = useRef(cards.map((card) => card.id));
+  const [recentlyAddedCardId, setRecentlyAddedCardId] = useState(null);
   const visibleCards = normalizedQuery
     ? cards.filter((card) =>
         matchesSearchQuery([card.searchKey, card.title, card.registration, card.port, card.business], searchQuery, {
@@ -799,6 +856,58 @@ export function DataManagementShipEditScreen({
         }),
       )
     : cards;
+
+  useEffect(() => {
+    const previousIds = previousCardIdsRef.current;
+    const currentIds = cards.map((card) => card.id);
+    const addedIds = currentIds.filter((id) => !previousIds.includes(id));
+
+    if (addedIds.length > 0) {
+      setRecentlyAddedCardId(addedIds[addedIds.length - 1]);
+    }
+
+    previousCardIdsRef.current = currentIds;
+  }, [cards]);
+
+  useEffect(() => {
+    if (!recentlyAddedCardId) {
+      return;
+    }
+
+    const target = itemRefs.current.get(recentlyAddedCardId);
+
+    if (!target) {
+      return;
+    }
+
+    const scrollToTarget = () => {
+      target.scrollIntoView({
+        behavior: reducedMotion ? 'auto' : 'smooth',
+        block: 'nearest',
+      });
+    };
+
+    const frameId = window.requestAnimationFrame(() => {
+      scrollToTarget();
+    });
+    const timeoutId = window.setTimeout(() => {
+      setRecentlyAddedCardId((current) => (current === recentlyAddedCardId ? null : current));
+    }, reducedMotion ? 120 : 420);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [recentlyAddedCardId, reducedMotion, reorderEnabled]);
+
+  const setItemRef = (cardId) => (node) => {
+    if (node) {
+      itemRefs.current.set(cardId, node);
+      return;
+    }
+
+    itemRefs.current.delete(cardId);
+  };
 
   return (
     <main className="app-shell">
@@ -811,40 +920,52 @@ export function DataManagementShipEditScreen({
             axis="y"
             className="manage-edit-screen__content manage-edit-screen__reorder-list"
             layoutScroll
+            ref={contentRef}
             values={cards}
             onReorder={onReorder}
           >
-            {cards.map((card, index) => (
-              <ManageShipReorderItem
-                key={card.id}
-                card={card}
-                originalCard={originalCards.find((item) => item.id === card.id)}
-                showDivider={index < cards.length - 1}
-                onDelete={onDelete}
-                onFieldChange={onFieldChange}
-                onImageChange={onImageChange}
-              />
-            ))}
+            <AnimatePresence initial={false}>
+              {cards.map((card, index) => (
+                <ManageShipReorderItem
+                  key={card.id}
+                  card={card}
+                  isEntering={card.id === recentlyAddedCardId}
+                  itemRef={setItemRef(card.id)}
+                  originalCard={originalCards.find((item) => item.id === card.id)}
+                  showDivider={index < cards.length - 1}
+                  onDelete={onDelete}
+                  onFieldChange={onFieldChange}
+                  onImageChange={onImageChange}
+                />
+              ))}
+            </AnimatePresence>
           </Reorder.Group>
         ) : (
-          <div className="manage-edit-screen__content">
-            {visibleCards.map((card, index) => (
-              <div key={card.id}>
-                <div className="manage-edit-screen__section">
-                  <ManageShipCard
-                    card={card}
-                    editable
-                    originalCard={originalCards.find((item) => item.id === card.id)}
-                    showDeleteButton
-                    showEditButton={false}
-                    onDelete={() => onDelete(card.id)}
-                    onFieldChange={(field, value) => onFieldChange(card.id, field, value)}
-                    onImageChange={(file) => onImageChange(card.id, file)}
-                  />
-                </div>
-                {index < visibleCards.length - 1 ? <div className="section-divider" /> : null}
-              </div>
-            ))}
+          <div ref={contentRef} className="manage-edit-screen__content">
+            <AnimatePresence initial={false}>
+              {visibleCards.map((card, index) => (
+                <motion.div
+                  key={card.id}
+                  ref={setItemRef(card.id)}
+                  layout
+                  {...getManageListItemMotion(reducedMotion, card.id === recentlyAddedCardId)}
+                >
+                  <div className="manage-edit-screen__section">
+                    <ManageShipCard
+                      card={card}
+                      editable
+                      originalCard={originalCards.find((item) => item.id === card.id)}
+                      showDeleteButton
+                      showEditButton={false}
+                      onDelete={() => onDelete(card.id)}
+                      onFieldChange={(field, value) => onFieldChange(card.id, field, value)}
+                      onImageChange={(file) => onImageChange(card.id, file)}
+                    />
+                  </div>
+                  {index < visibleCards.length - 1 ? <div className="section-divider" /> : null}
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         )}
 

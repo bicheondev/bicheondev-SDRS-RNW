@@ -726,10 +726,6 @@ function App() {
   };
 
   const enterMainScreen = () => {
-    if (!databaseReady) {
-      return;
-    }
-
     mainScrollPositionRef.current = 0;
     lastScrollTopRef.current = 0;
     setTopBarHidden(false);
@@ -766,13 +762,24 @@ function App() {
               </h1>
             </header>
 
-            <form className="login-form" onSubmit={(event) => event.preventDefault()}>
+            <form
+              id="login-form"
+              className="login-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+
+                if (isFilled) {
+                  enterMainScreen();
+                }
+              }}
+            >
               <label className={`input-shell ${focusedField === 'username' ? 'input-shell--focused' : ''}`}>
                 <input
                   className="login-input"
                   type="text"
                   value={username}
                   placeholder="아이디"
+                  enterKeyHint="next"
                   autoCapitalize="none"
                   autoCorrect="off"
                   spellCheck={false}
@@ -788,6 +795,7 @@ function App() {
                   type="password"
                   value={password}
                   placeholder="비밀번호"
+                  enterKeyHint="go"
                   onChange={(event) => setPassword(event.target.value)}
                   onFocus={() => handleLoginFieldFocus('password')}
                   onBlur={handleLoginFieldBlur}
@@ -799,11 +807,11 @@ function App() {
 
             <motion.button
               className={`login-button pressable-control pressable-control--filled ${isFilled ? 'login-button--active' : ''}`}
-              type="button"
-              disabled={!isFilled || !databaseReady}
-              onClick={enterMainScreen}
+              form="login-form"
+              type="submit"
+              disabled={!isFilled}
             >
-              {databaseReady ? '로그인' : '기본 데이터 불러오는 중...'}
+              로그인
             </motion.button>
           </section>
         </main>

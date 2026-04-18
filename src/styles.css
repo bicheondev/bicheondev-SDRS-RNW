@@ -95,6 +95,9 @@
   --color-state-layer-inverse: rgb(255 255 255 / 0.16);
 
   --shadow-screen: 0 24px 60px rgb(43 73 115 / 0.16);
+  --shadow-screen-stack:
+    -10px 0 28px -18px rgb(15 23 42 / 0.22),
+    -2px 0 8px rgb(15 23 42 / 0.08);
   --shadow-focus: 0 0 0 1px var(--color-border-accent-focus);
   --shadow-edit: 0 0 0 1px var(--color-border-accent-soft);
   --shadow-zoom: 0 24px 48px rgb(0 0 0 / 0.18);
@@ -212,6 +215,9 @@
   --color-state-layer-inverse: rgb(2 6 23 / 0.16);
 
   --shadow-screen: 0 24px 60px rgb(2 6 23 / 0.42);
+  --shadow-screen-stack:
+    -10px 0 30px -18px rgb(2 6 23 / 0.72),
+    -2px 0 10px rgb(2 6 23 / 0.34);
   --shadow-focus: 0 0 0 1px var(--color-border-accent-focus);
   --shadow-edit: 0 0 0 1px var(--color-border-accent-soft);
   --shadow-zoom: 0 24px 48px rgb(2 6 23 / 0.5);
@@ -437,13 +443,10 @@ img {
 
 .phone-screen--menu,
 .phone-screen--menu-subpage {
-  background: var(--color-bg-screen);
-  overflow: hidden;
-}
-
-.phone-screen--menu-subpage {
   display: flex;
   flex-direction: column;
+  background: var(--color-bg-screen);
+  overflow: hidden;
 }
 
 .phone-screen--search {
@@ -542,9 +545,9 @@ img {
   left: 0;
   bottom: 0;
   width: 100%;
-  height: calc(64px + env(safe-area-inset-bottom, 0px));
+  height: 64px;
   border: 0;
-  padding: 0 0 env(safe-area-inset-bottom, 0px);
+  padding: 0;
   background: var(--color-bg-surface-pressed);
   color: var(--color-text-disabled);
   font-size: 18px;
@@ -881,10 +884,15 @@ img {
 }
 
 .menu-screen__content {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding-top: 28px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .menu-screen__group {
@@ -1620,6 +1628,7 @@ img {
   padding-top: 77px;
 }
 
+.menu-screen__content,
 .manage-home__content,
 .manage-edit-menu,
 .manage-edit-screen__content {
@@ -1627,11 +1636,19 @@ img {
   scrollbar-width: none;
 }
 
+.menu-screen__content::-webkit-scrollbar,
 .manage-home__content::-webkit-scrollbar,
 .manage-edit-menu::-webkit-scrollbar,
 .manage-edit-screen__content::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+.menu-screen__content,
+.manage-home__content,
+.manage-edit-menu,
+.manage-edit-screen__content {
+  -webkit-overflow-scrolling: touch;
 }
 
 .manage-home__content {
@@ -1762,6 +1779,12 @@ img {
   letter-spacing: -0.02em;
 }
 
+.manage-subpage__save-label {
+  display: inline-block;
+  color: inherit;
+  -webkit-text-fill-color: currentColor;
+}
+
 .manage-subpage__save--active {
   color: var(--color-accent);
   -webkit-text-fill-color: var(--color-accent);
@@ -1799,9 +1822,11 @@ img {
 
 .manage-edit-screen__content {
   flex: 1;
+  min-height: 0;
   margin-top: 28px;
   padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .manage-edit-screen__reorder-list {
@@ -2117,6 +2142,7 @@ img {
 }
 
 .manage-ship-card__edit-button {
+  --press-overlay-inset: 2px;
   position: absolute;
   left: 255px;
   width: 24px;
@@ -2180,7 +2206,7 @@ img {
 
 .manage-ship-card__equipment-item {
   --press-radius: var(--radius-interaction);
-  --press-overlay-inset: 2px 8px;
+  --press-overlay-inset: -6px -14px;
   --press-overlay-color: var(--slate-50);
   display: flex;
   align-items: center;
@@ -2503,18 +2529,19 @@ img {
   }
 
   .phone-screen--login-keyboard-open .login-form {
+    position: absolute;
+    left: 18px;
+    right: 18px;
+    top: calc(145px + env(safe-area-inset-top, 0px));
+    bottom: 64px;
     width: auto;
-    margin: auto 18px;
+    margin: 0;
+    align-content: center;
   }
 
   .phone-screen--login-keyboard-open .app-version {
     opacity: 0;
     pointer-events: none;
-  }
-
-  .phone-screen--login-keyboard-open .login-button {
-    position: static;
-    width: 100%;
   }
 
   .bottom-tab {

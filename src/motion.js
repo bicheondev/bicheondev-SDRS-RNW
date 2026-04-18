@@ -17,6 +17,7 @@ export const motionTokens = {
     normal: 0.24,
     screen: 0.32,
     image: 0.28,
+    stackOverlay: 0.42,
   },
   spring: {
     screen: { type: 'spring', stiffness: 420, damping: 40, mass: 0.92 },
@@ -54,6 +55,7 @@ export const motionTokens = {
 };
 
 const stackEase = motionTokens.ease.stack;
+const noScreenShadow = '0 0 0 0 rgb(0 0 0 / 0)';
 
 export const motionDurationsMs = {
   instant: Math.round(motionTokens.duration.instant * 1000),
@@ -122,12 +124,12 @@ const SCREEN_STATES = {
     exit: { x: '100%', y: 0, opacity: 0, scale: 1, filter: 'blur(3px)' },
   },
   push: {
-    enter: { x: '100%', y: 0, opacity: 0.72, scale: 1 },
-    exit: { x: '-18%', y: 0, opacity: 0.72, scale: 0.985 },
+    enter: { x: '100%', y: 0, opacity: 1, scale: 1 },
+    exit: { x: '-18%', y: 0, opacity: 1, scale: 0.985 },
   },
   pop: {
-    enter: { x: '-18%', y: 0, opacity: 0.72, scale: 0.985 },
-    exit: { x: '100%', y: 0, opacity: 0.72, scale: 1 },
+    enter: { x: '-18%', y: 0, opacity: 1, scale: 0.985 },
+    exit: { x: '100%', y: 0, opacity: 1, scale: 1 },
   },
   loginToMain: {
     enter: { x: 0, y: motionTokens.offset.loginLift, opacity: 0, scale: 0.982 },
@@ -139,8 +141,8 @@ const SCREEN_STATES = {
   },
 };
 
-export const hiddenScreenState = { opacity: 0, x: 0, y: 0, scale: 1, filter: 'blur(0px)' };
-export const visibleScreenState = { opacity: 1, x: 0, y: 0, scale: 1, filter: 'blur(0px)' };
+export const hiddenScreenState = { opacity: 0, x: 0, y: 0, scale: 1, filter: 'blur(0px)', boxShadow: noScreenShadow };
+export const visibleScreenState = { opacity: 1, x: 0, y: 0, scale: 1, filter: 'blur(0px)', boxShadow: noScreenShadow };
 
 export function getScreenMotionState(direction, phase, reducedMotion = false) {
   if (reducedMotion) {
@@ -156,6 +158,38 @@ export function getScreenMotionState(direction, phase, reducedMotion = false) {
   }
 
   return SCREEN_STATES[direction]?.[phase] ?? (phase === 'enter' ? visibleScreenState : hiddenScreenState);
+}
+
+export function getScreenOverlayState(direction, phase, reducedMotion = false) {
+  if (reducedMotion) {
+    return { opacity: 0 };
+  }
+
+  if (direction === 'push') {
+    return { opacity: phase === 'exit' ? 0.18 : 0 };
+  }
+
+  if (direction === 'pop') {
+    return { opacity: phase === 'enter' ? 0.18 : 0 };
+  }
+
+  return { opacity: 0 };
+}
+
+export function getScreenShadowState(direction, phase, reducedMotion = false) {
+  if (reducedMotion) {
+    return noScreenShadow;
+  }
+
+  if (direction === 'push' && phase === 'enter') {
+    return 'var(--shadow-screen-stack)';
+  }
+
+  if (direction === 'pop' && phase === 'exit') {
+    return 'var(--shadow-screen-stack)';
+  }
+
+  return noScreenShadow;
 }
 
 export function getScreenTransition(direction, reducedMotion = false, phase = 'enter') {
@@ -185,10 +219,7 @@ export function getScreenTransition(direction, reducedMotion = false, phase = 'e
     return {
       x: { duration: 0.46, ease: stackEase },
       scale: { duration: 0.46, ease: stackEase },
-      opacity: {
-        duration: 0.24,
-        ease: phase === 'enter' ? motionTokens.ease.fadeIn : motionTokens.ease.fadeOut,
-      },
+      boxShadow: { duration: 0.24, ease: motionTokens.ease.linear },
     };
   }
 
@@ -196,10 +227,7 @@ export function getScreenTransition(direction, reducedMotion = false, phase = 'e
     return {
       x: { duration: 0.46, ease: stackEase },
       scale: { duration: 0.46, ease: stackEase },
-      opacity: {
-        duration: 0.24,
-        ease: phase === 'enter' ? motionTokens.ease.fadeIn : motionTokens.ease.fadeOut,
-      },
+      boxShadow: { duration: 0.24, ease: motionTokens.ease.linear },
     };
   }
 
@@ -208,6 +236,22 @@ export function getScreenTransition(direction, reducedMotion = false, phase = 'e
   }
 
   return { duration: motionTokens.duration.fast, ease: motionTokens.ease.ios };
+}
+
+export function getScreenOverlayTransition(direction, reducedMotion = false) {
+  if (direction === 'none') {
+    return { duration: 0, ease: motionTokens.ease.linear };
+  }
+
+  if (reducedMotion) {
+    return { duration: motionTokens.reduced.duration, ease: motionTokens.ease.linear };
+  }
+
+  if (direction === 'push' || direction === 'pop') {
+    return { duration: motionTokens.duration.stackOverlay, ease: stackEase };
+  }
+
+  return { duration: motionTokens.duration.fast, ease: motionTokens.ease.linear };
 }
 
 export function getScreenZIndex(direction, entering) {

@@ -326,6 +326,22 @@ export function SearchTopBar({
   onToggleCompact,
   onVesselTypeFilterOpen,
 }) {
+  const inputRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const focusInput = () => {
+      inputRef.current?.focus({ preventScroll: true });
+    };
+
+    const frameId = window.requestAnimationFrame(focusInput);
+    const timeoutId = window.setTimeout(focusInput, 120);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
+
   return (
     <header className="search-top-bar">
       <div className="search-top-bar__main">
@@ -339,10 +355,16 @@ export function SearchTopBar({
           <img src={assets.searchBack} alt="" />
         </motion.button>
         <input
+          ref={inputRef}
+          autoFocus
           className={`search-top-bar__input ${query ? 'search-top-bar__input--filled' : ''}`}
+          type="search"
+          inputMode="search"
+          enterKeyHint="search"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder="검색"
+          spellCheck={false}
         />
         {query ? (
           <motion.button
