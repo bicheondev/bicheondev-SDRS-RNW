@@ -11,6 +11,7 @@
   --red-600: #dc2626;
   --emerald-50: #ecfdf5;
   --emerald-500: #10b981;
+  --teal-50: #f0fdfa;
   --amber-50: #fffbeb;
   --amber-400: #fbbf24;
   --slate-50: #f8fafc;
@@ -108,7 +109,7 @@
   --gradient-app-shell: radial-gradient(circle at top, #f3f7fd 0%, #edf3fa 24%, #dde6f2 100%);
   --gradient-top-bar: linear-gradient(180deg, rgb(255 255 255) 0%, rgb(255 255 255) 64%, rgb(255 255 255 / 0) 100%);
   --gradient-filter-backdrop: linear-gradient(180deg, rgb(255 255 255) 0%, rgb(255 255 255 / 0.5) 100%);
-  --radius-interaction: 8px;
+  --radius-interaction: 12px;
 
   --icon-filter-neutral: none;
   --icon-filter-strong: none;
@@ -299,6 +300,7 @@ input {
 }
 
 .pressable-control {
+  --press-overlay-color: var(--slate-50);
   position: relative;
   isolation: isolate;
   transition:
@@ -320,6 +322,11 @@ input {
     opacity var(--motion-duration-fast) var(--motion-ease-standard),
     background-color var(--motion-duration-fast) var(--motion-ease-standard);
   pointer-events: none;
+  z-index: 0;
+}
+
+.pressable-control > * {
+  position: relative;
   z-index: 1;
 }
 
@@ -351,7 +358,7 @@ input {
 
 .pressable-control--tab {
   --press-radius: var(--radius-interaction);
-  --press-overlay-inset: -6px -12px;
+  --press-overlay-inset: -2px -12px;
 }
 
 .pressable-control--surface {
@@ -365,17 +372,12 @@ input {
 
 .pressable-control--media {
   --press-radius: var(--motion-thumbnail-radius);
-  --press-overlay-color: var(--color-state-layer-media);
   overflow: hidden;
 }
 
-.pressable-control--filled {
-  --press-overlay-color: var(--color-state-layer-accent);
-}
+.pressable-control--filled {}
 
-.pressable-control--danger {
-  --press-overlay-color: var(--color-state-layer-accent);
-}
+.pressable-control--danger {}
 
 img {
   display: block;
@@ -710,6 +712,18 @@ img {
   justify-content: space-between;
 }
 
+.top-bar .icon-button {
+  --press-overlay-color: var(--slate-50);
+}
+
+.search-top-bar__back,
+.search-top-bar__cancel,
+.detail-top-bar .detail-back-button,
+.manage-subpage__top-bar .detail-back-button,
+.manage-subpage__top-bar .manage-subpage__add {
+  --press-overlay-color: var(--slate-50);
+}
+
 .top-bar__logo {
   width: 62.637px;
   height: 18px;
@@ -766,6 +780,10 @@ img {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.view-options .icon-button {
+  --press-overlay-color: var(--slate-50);
 }
 
 .view-options--blurred {
@@ -850,6 +868,9 @@ img {
 
 .menu-row,
 .menu-subpage__row {
+  --press-radius: var(--radius-interaction);
+  --press-overlay-inset: -4px -8px;
+  --press-overlay-color: var(--slate-50);
   width: 100%;
   height: 52px;
   border: 0;
@@ -1094,10 +1115,13 @@ img {
   overflow: hidden;
   pointer-events: none;
   box-shadow: var(--shadow-zoom);
-  transform-origin: top left;
-  will-change: transform, opacity, border-radius;
+  background: var(--color-bg-zoom);
+  will-change: top, left, width, height, opacity, border-radius;
   transition:
-    transform var(--motion-duration-image) var(--motion-ease-standard),
+    top var(--motion-duration-image) var(--motion-ease-standard),
+    left var(--motion-duration-image) var(--motion-ease-standard),
+    width var(--motion-duration-image) var(--motion-ease-standard),
+    height var(--motion-duration-image) var(--motion-ease-standard),
     border-radius var(--motion-duration-image) var(--motion-ease-standard),
     opacity var(--motion-duration-fast) var(--motion-ease-standard),
     box-shadow var(--motion-duration-image) var(--motion-ease-standard);
@@ -1111,7 +1135,13 @@ img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
   display: block;
+}
+
+[data-vessel-thumb-hidden="true"] {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 .filter-screen__results {
@@ -1452,8 +1482,9 @@ img {
   width: min(100%, var(--screen-width));
   height: 84px;
   display: flex;
+  align-items: flex-start;
   justify-content: center;
-  gap: 96px;
+  gap: 70px;
   padding-top: 8px;
   z-index: 2;
   overflow: hidden;
@@ -1481,15 +1512,25 @@ img {
 }
 
 .bottom-tab__item {
+  --press-overlay-inset: -4px -8px;
+  align-self: flex-start;
   display: flex;
+  flex: 0 0 70px;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+  width: 70px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0 12px;
   color: var(--color-text-tertiary);
   font-size: 11px;
   line-height: 1;
   font-weight: 700;
   letter-spacing: -0.01em;
+  text-align: center;
+  white-space: nowrap;
   position: relative;
   z-index: 1;
   opacity: 0.84;
@@ -1567,6 +1608,9 @@ img {
 }
 
 .manage-home__row {
+  --press-radius: var(--radius-interaction);
+  --press-overlay-inset: 2px 8px;
+  --press-overlay-color: var(--slate-50);
   width: 100%;
   min-height: 52px;
   border: 0;
@@ -1691,6 +1735,9 @@ img {
 }
 
 .manage-edit-menu__row {
+  --press-radius: var(--radius-interaction);
+  --press-overlay-inset: 2px 8px;
+  --press-overlay-color: var(--slate-50);
   width: 100%;
   min-height: 52px;
   border: 0;

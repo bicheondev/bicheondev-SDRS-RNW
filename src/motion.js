@@ -103,21 +103,25 @@ export function getPressMotion(kind = 'button', options = {}) {
 }
 
 const SCREEN_STATES = {
+  none: {
+    enter: { x: 0, y: 0, opacity: 1, scale: 1 },
+    exit: { x: 0, y: 0, opacity: 1, scale: 1 },
+  },
   push: {
-    enter: { x: motionTokens.offset.pushEnter, y: 0, opacity: 1, scale: 1 },
-    exit: { x: -motionTokens.offset.pushExit, y: 0, opacity: 0.92, scale: motionTokens.scale.backgroundShift },
+    enter: { x: 32, y: 0, opacity: 1, scale: 1 },
+    exit: { x: -12, y: 0, opacity: 0.96, scale: 0.996 },
   },
   pop: {
-    enter: { x: -motionTokens.offset.popEnter, y: 0, opacity: 0.94, scale: motionTokens.scale.backgroundShift },
-    exit: { x: motionTokens.offset.pushEnter, y: 0, opacity: 1, scale: 1 },
+    enter: { x: -12, y: 0, opacity: 0.96, scale: 0.996 },
+    exit: { x: 32, y: 0, opacity: 1, scale: 1 },
   },
   tab: {
-    enter: { x: 0, y: motionTokens.offset.tabLift, opacity: 0, scale: 0.998 },
-    exit: { x: 0, y: -4, opacity: 0, scale: 1.002 },
+    enter: { x: 0, y: 0, opacity: 0, scale: 0.998 },
+    exit: { x: 0, y: 0, opacity: 0, scale: 1.002 },
   },
   tabBack: {
-    enter: { x: 0, y: 4, opacity: 0, scale: 0.998 },
-    exit: { x: 0, y: motionTokens.offset.tabLift, opacity: 0, scale: 0.998 },
+    enter: { x: 0, y: 0, opacity: 0, scale: 0.998 },
+    exit: { x: 0, y: 0, opacity: 0, scale: 0.998 },
   },
   sheet: {
     enter: { x: 0, y: motionTokens.offset.sheetLift, opacity: 0, scale: 1 },
@@ -157,12 +161,19 @@ export function getScreenMotionState(direction, phase, reducedMotion = false) {
 }
 
 export function getScreenTransition(direction, reducedMotion = false) {
+  if (direction === 'none') {
+    return { duration: 0, ease: motionTokens.ease.linear };
+  }
+
   if (reducedMotion) {
     return { duration: motionTokens.reduced.duration, ease: motionTokens.ease.linear };
   }
 
   if (direction === 'push' || direction === 'pop') {
-    return motionTokens.spring.screen;
+    return {
+      duration: motionTokens.duration.screen,
+      ease: motionTokens.ease.ios,
+    };
   }
 
   if (direction === 'tab' || direction === 'tabBack') {
@@ -181,6 +192,10 @@ export function getScreenTransition(direction, reducedMotion = false) {
 }
 
 export function getScreenZIndex(direction, entering) {
+  if (direction === 'none') {
+    return entering ? 3 : 1;
+  }
+
   if (entering) {
     if (direction === 'push' || direction === 'tab' || direction === 'sheet' || direction === 'loginToMain') {
       return 3;

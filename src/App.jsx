@@ -837,9 +837,9 @@ function App() {
         <MenuScreen
           colorMode={colorMode}
           compact={compact}
-          onColorModeOpen={() => navigate('menuMode', 'push')}
+          onColorModeOpen={() => navigate('menuMode', 'none')}
           onDbOpen={() => navigate('main', 'tabBack')}
-          onInfoOpen={() => navigate('menuInfo', 'push')}
+          onInfoOpen={() => navigate('menuInfo', 'none')}
           onManageOpen={openManage}
           onLogout={() => {
             setUsername('');
@@ -853,13 +853,13 @@ function App() {
       <AnimatedScreen screenKey="menuMode" currentScreen={screen} navDir={navDir} reducedMotion={reducedMotion}>
         <MenuModeScreen
           colorMode={colorMode}
-          onBack={() => navigate('menu', 'pop')}
+          onBack={() => navigate('menu', 'none')}
           onSelectMode={setColorMode}
         />
       </AnimatedScreen>
 
       <AnimatedScreen screenKey="menuInfo" currentScreen={screen} navDir={navDir} reducedMotion={reducedMotion}>
-        <MenuInfoScreen onBack={() => navigate('menu', 'pop')} />
+        <MenuInfoScreen onBack={() => navigate('menu', 'none')} />
       </AnimatedScreen>
 
       <ImageZoomModal session={zoomSession} onClose={() => setZoomSession(null)} />

@@ -58,7 +58,7 @@ function toSerializableRect(rect) {
   };
 }
 
-function findVisibleThumbnailRect(vesselId) {
+function findVisibleThumbnailTarget(vesselId) {
   if (typeof document === 'undefined') {
     return null;
   }
@@ -67,7 +67,7 @@ function findVisibleThumbnailRect(vesselId) {
   const escapedId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(rawId) : rawId.replace(/["\\]/g, '\\$&');
   const candidates = Array.from(document.querySelectorAll(`[data-vessel-thumb-id="${escapedId}"]`));
   let bestArea = 0;
-  let bestRect = null;
+  let bestTarget = null;
 
   candidates.forEach((node) => {
     if (!(node instanceof HTMLElement)) {
@@ -99,11 +99,14 @@ function findVisibleThumbnailRect(vesselId) {
     const area = rect.width * rect.height;
     if (area > bestArea) {
       bestArea = area;
-      bestRect = toSerializableRect(rect);
+      bestTarget = {
+        node,
+        rect: toSerializableRect(rect),
+      };
     }
   });
 
-  return bestRect;
+  return bestTarget;
 }
 
 export default function ImageZoomModal({ session, onClose }) {
@@ -120,6 +123,7 @@ export default function ImageZoomModal({ session, onClose }) {
   const dismissOffsetRef = useRef(0);
   const pageOffsetRef = useRef(0);
   const transformRef = useRef({ scale: MIN_ZOOM_SCALE, x: 0, y: 0 });
+  const hiddenThumbnailRef = useRef(null);
   const reducedMotion = useReducedMotion() ?? false;
   const [currentIndex, setCurrentIndex] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(0);
@@ -184,6 +188,36 @@ export default function ImageZoomModal({ session, onClose }) {
       window.clearTimeout(closeTimeoutRef.current);
       closeTimeoutRef.current = null;
     }
+  };
+
+  const releaseHiddenThumbnail = () => {
+    const hiddenThumbnail = hiddenThumbnailRef.current;
+
+    if (!(hiddenThumbnail instanceof HTMLElement)) {
+      hiddenThumbnailRef.current = null;
+      return;
+    }
+
+    delete hiddenThumbnail.dataset.zoomThumbHidden;
+    hiddenThumbnailRef.current = null;
+  };
+
+  const syncHiddenThumbnail = (vesselId) => {
+    const nextTarget = findVisibleThumbnailTarget(vesselId);
+    const nextThumbnail = nextTarget?.node ?? null;
+
+    if (hiddenThumbnailRef.current === nextThumbnail) {
+      return nextTarget;
+    }
+
+    releaseHiddenThumbnail();
+
+    if (nextThumbnail instanceof HTMLElement) {
+      nextThumbnail.dataset.zoomThumbHidden = 'true';
+      hiddenThumbnailRef.current = nextThumbnail;
+    }
+
+    return nextTarget;
   };
 
   const resetInteractionState = () => {
@@ -314,27 +348,24 @@ export default function ImageZoomModal({ session, onClose }) {
     setIsInteracting(false);
 
     const fromRect = imageRef.current?.getBoundingClientRect();
-    const toRect = findVisibleThumbnailRect(vessel?.id);
+    const thumbnailTarget =
+      hiddenThumbnailRef.current instanceof HTMLElement && hiddenThumbnailRef.current.isConnected
+        ? {
+            node: hiddenThumbnailRef.current,
+            rect: toSerializableRect(hiddenThumbnailRef.current.getBoundingClientRect()),
+          }
+        : syncHiddenThumbnail(vessel?.id);
+    const toRect = thumbnailTarget?.rect ?? null;
 
     if (reducedMotion || !fromRect || !toRect || !vessel) {
       onClose();
       return;
     }
 
-    const translateX = toRect.left - fromRect.left;
-    const translateY = toRect.top - fromRect.top;
-    const scaleX = fromRect.width > 0 ? toRect.width / fromRect.width : 1;
-    const scaleY = fromRect.height > 0 ? toRect.height / fromRect.height : 1;
-
     setClosingSnapshot({
       src: vessel.imageWide,
       fromRect: toSerializableRect(fromRect),
-      transform: {
-        translateX,
-        translateY,
-        scaleX,
-        scaleY,
-      },
+      toRect,
       animating: false,
     });
 
@@ -469,6 +500,7 @@ export default function ImageZoomModal({ session, onClose }) {
 
   useEffect(() => {
     if (!session) {
+      releaseHiddenThumbnail();
       setIsPresented(false);
       if (presentFrameRef.current) {
         window.cancelAnimationFrame(presentFrameRef.current);
@@ -495,6 +527,16 @@ export default function ImageZoomModal({ session, onClose }) {
       }
     };
   }, [reducedMotion, session]);
+
+  useLayoutEffect(() => {
+    if (!session || !vessel || isClosing) {
+      return undefined;
+    }
+
+    syncHiddenThumbnail(vessel.id);
+
+    return undefined;
+  }, [isClosing, session, vessel]);
 
   useEffect(() => {
     if (!session) {
@@ -546,6 +588,7 @@ export default function ImageZoomModal({ session, onClose }) {
 
       clearPageTimeout();
       clearCloseAnimation();
+      releaseHiddenThumbnail();
     },
     [],
   );
@@ -822,10 +865,9 @@ export default function ImageZoomModal({ session, onClose }) {
     .filter(Boolean)
     .join(' ');
   const closingRect = closingSnapshot?.fromRect ?? null;
-  const closingTransform =
-    closingSnapshot && closingSnapshot.animating
-      ? `translate3d(${closingSnapshot.transform.translateX}px, ${closingSnapshot.transform.translateY}px, 0) scale(${closingSnapshot.transform.scaleX}, ${closingSnapshot.transform.scaleY})`
-      : 'translate3d(0, 0, 0) scale(1)';
+  const closingTargetRect = closingSnapshot?.toRect ?? null;
+  const activeClosingRect =
+    closingSnapshot?.animating && closingTargetRect ? closingTargetRect : closingRect;
 
   return (
     <div
@@ -903,13 +945,12 @@ export default function ImageZoomModal({ session, onClose }) {
           <div
             className={`zoom-modal__closing-image ${closingSnapshot.animating ? 'zoom-modal__closing-image--animating' : ''}`.trim()}
             style={{
-              top: `${closingRect.top}px`,
-              left: `${closingRect.left}px`,
-              width: `${closingRect.width}px`,
-              height: `${closingRect.height}px`,
+              top: `${activeClosingRect.top}px`,
+              left: `${activeClosingRect.left}px`,
+              width: `${activeClosingRect.width}px`,
+              height: `${activeClosingRect.height}px`,
               borderRadius: `${closingSnapshot.animating ? motionTokens.radius.thumbnail : 0}px`,
               opacity: closingSnapshot.animating ? 0.92 : 1,
-              transform: closingTransform,
             }}
           >
             <img src={closingSnapshot.src} alt="" />
