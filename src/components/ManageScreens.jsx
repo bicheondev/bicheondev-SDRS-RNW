@@ -998,13 +998,6 @@ export function DataManagementShipEditScreen({
   );
   const itemRefs = useRef(new Map());
   const previousCardIdsRef = useRef(cards.map((card) => card.id));
-  const keyboardBlurTimeoutRef = useRef(null);
-  const titleRef = useRef(null);
-  const viewportBaseHeightRef = useRef(0);
-  const [keyboardFocused, setKeyboardFocused] = useState(false);
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
-  const [keyboardTitleHidden, setKeyboardTitleHidden] = useState(false);
-  const [viewportTop, setViewportTop] = useState(0);
   const [recentlyAddedCardId, setRecentlyAddedCardId] = useState(null);
   const visibleCards = normalizedQuery
     ? cards.filter((card) =>
@@ -1064,124 +1057,6 @@ export function DataManagementShipEditScreen({
     };
   }, [recentlyAddedCardId, reducedMotion, reorderEnabled]);
 
-  useEffect(
-    () => () => {
-      if (keyboardBlurTimeoutRef.current) {
-        clearTimeout(keyboardBlurTimeoutRef.current);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (!keyboardFocused) {
-      viewportBaseHeightRef.current = 0;
-      setKeyboardOpen(false);
-      setKeyboardTitleHidden(false);
-      setViewportTop(0);
-      return undefined;
-    }
-
-    if (typeof window === 'undefined') {
-      return undefined;
-    }
-
-    const viewport = window.visualViewport;
-
-    if (!viewport) {
-      return undefined;
-    }
-
-    const updateKeyboardState = () => {
-      viewportBaseHeightRef.current = Math.max(viewportBaseHeightRef.current, viewport.height);
-
-      const viewportBaseHeight = viewportBaseHeightRef.current || viewport.height;
-      const isKeyboardVisible = viewportBaseHeight - viewport.height > 80;
-
-      setKeyboardOpen(isKeyboardVisible);
-      setViewportTop(isKeyboardVisible ? viewport.offsetTop : 0);
-    };
-
-    updateKeyboardState();
-
-    viewport.addEventListener('resize', updateKeyboardState);
-    viewport.addEventListener('scroll', updateKeyboardState);
-
-    return () => {
-      viewport.removeEventListener('resize', updateKeyboardState);
-      viewport.removeEventListener('scroll', updateKeyboardState);
-    };
-  }, [keyboardFocused]);
-
-  const updateKeyboardTitleVisibility = useCallback(() => {
-    if (
-      !keyboardOpen ||
-      !(titleRef.current instanceof HTMLElement) ||
-      !(contentRef.current instanceof HTMLElement)
-    ) {
-      setKeyboardTitleHidden(false);
-      return;
-    }
-
-    const activeElement = document.activeElement;
-
-    if (
-      !(activeElement instanceof HTMLInputElement) &&
-      !(activeElement instanceof HTMLTextAreaElement)
-    ) {
-      setKeyboardTitleHidden(false);
-      return;
-    }
-
-    if (!contentRef.current.contains(activeElement)) {
-      setKeyboardTitleHidden(false);
-      return;
-    }
-
-    const titleRect = titleRef.current.getBoundingClientRect();
-    const activeRect = activeElement.getBoundingClientRect();
-
-    setKeyboardTitleHidden(titleRect.bottom >= activeRect.top - 12);
-  }, [keyboardOpen]);
-
-  useEffect(() => {
-    if (!keyboardOpen) {
-      setKeyboardTitleHidden(false);
-      return undefined;
-    }
-
-    let frameId = null;
-
-    const scheduleVisibilityUpdate = () => {
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
-      }
-
-      frameId = window.requestAnimationFrame(updateKeyboardTitleVisibility);
-    };
-
-    scheduleVisibilityUpdate();
-
-    const viewport = window.visualViewport;
-    const scrollTarget = contentRef.current;
-
-    viewport?.addEventListener('resize', scheduleVisibilityUpdate);
-    viewport?.addEventListener('scroll', scheduleVisibilityUpdate);
-    scrollTarget?.addEventListener('scroll', scheduleVisibilityUpdate, { passive: true });
-    window.addEventListener('resize', scheduleVisibilityUpdate);
-
-    return () => {
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
-      }
-
-      viewport?.removeEventListener('resize', scheduleVisibilityUpdate);
-      viewport?.removeEventListener('scroll', scheduleVisibilityUpdate);
-      scrollTarget?.removeEventListener('scroll', scheduleVisibilityUpdate);
-      window.removeEventListener('resize', scheduleVisibilityUpdate);
-    };
-  }, [keyboardOpen, updateKeyboardTitleVisibility, viewportTop]);
-
   const setItemRef = (cardId) => (node) => {
     if (node) {
       itemRefs.current.set(cardId, node);
@@ -1191,54 +1066,12 @@ export function DataManagementShipEditScreen({
     itemRefs.current.delete(cardId);
   };
 
-  const handleFocusCapture = (event) => {
-    if (
-      !(event.target instanceof HTMLInputElement) &&
-      !(event.target instanceof HTMLTextAreaElement)
-    ) {
-      return;
-    }
-
-    if (keyboardBlurTimeoutRef.current) {
-      clearTimeout(keyboardBlurTimeoutRef.current);
-      keyboardBlurTimeoutRef.current = null;
-    }
-
-    setKeyboardFocused(true);
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(updateKeyboardTitleVisibility);
-    });
-  };
-
-  const handleBlurCapture = (event) => {
-    if (
-      !(event.target instanceof HTMLInputElement) &&
-      !(event.target instanceof HTMLTextAreaElement)
-    ) {
-      return;
-    }
-
-    keyboardBlurTimeoutRef.current = window.setTimeout(() => {
-      setKeyboardFocused(false);
-      keyboardBlurTimeoutRef.current = null;
-    }, 80);
-  };
-
   return (
     <main className="app-shell">
-      <section
-        className={`phone-screen phone-screen--manage-edit ${keyboardOpen ? 'phone-screen--manage-edit-keyboard-open' : ''}`.trim()}
-        style={{
-          '--manage-edit-viewport-top': `${viewportTop}px`,
-        }}
-        onFocusCapture={handleFocusCapture}
-        onBlurCapture={handleBlurCapture}
-      >
+      <section className="phone-screen phone-screen--manage-edit">
         <ManageSubpageTopBar
           title="선박 DB 편집하기"
           saveActive={dirty}
-          titleHidden={keyboardTitleHidden}
-          titleRef={titleRef}
           onAdd={onAdd}
           onBack={onBack}
           onSave={dirty ? onSave : undefined}

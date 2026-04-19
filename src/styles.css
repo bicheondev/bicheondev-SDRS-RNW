@@ -2884,13 +2884,6 @@ img {
     flex: 0 0 64px;
   }
 
-  .phone-screen--manage-edit-keyboard-open .manage-subpage__top-bar {
-    position: fixed;
-    top: var(--manage-edit-viewport-top, 0px);
-    left: 0;
-    right: 0;
-  }
-
   .bottom-tab {
     width: 100%;
   }
