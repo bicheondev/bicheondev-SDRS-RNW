@@ -12,30 +12,61 @@ function isChoseongQuery(value) {
   return /^[ㄱ-ㅎ\s]+$/.test(value);
 }
 
-export function matchesSearchQuery(fields, query, options = {}) {
+export function buildSearchIndex(fields, options = {}) {
   const { choseongFields = fields } = options;
+  const normalizedFields = fields.map((field) => normalizeSearchText(field)).filter(Boolean);
+
+  return {
+    choseongFields: choseongFields
+      .map((field) => normalizeSearchText(field))
+      .filter(Boolean)
+      .map((field) => compactWhitespace(getChoseong(field))),
+    fields: normalizedFields.map((field) => field.toLowerCase()),
+  };
+}
+
+export function compileSearchQuery(query) {
   const normalizedQuery = normalizeSearchText(query).toLowerCase();
 
   if (!normalizedQuery) {
-    return true;
-  }
-
-  const normalizedFields = fields.map((field) => normalizeSearchText(field));
-
-  if (normalizedFields.some((field) => field && field.toLowerCase().includes(normalizedQuery))) {
-    return true;
+    return {
+      compactQuery: '',
+      normalizedQuery,
+      usesChoseong: false,
+    };
   }
 
   if (!isChoseongQuery(normalizedQuery)) {
+    return {
+      compactQuery: '',
+      normalizedQuery,
+      usesChoseong: false,
+    };
+  }
+
+  return {
+    compactQuery: compactWhitespace(normalizedQuery),
+    normalizedQuery,
+    usesChoseong: true,
+  };
+}
+
+export function matchesCompiledSearchQuery(searchIndex, compiledQuery) {
+  if (!compiledQuery.normalizedQuery) {
+    return true;
+  }
+
+  if (searchIndex.fields.some((field) => field.includes(compiledQuery.normalizedQuery))) {
+    return true;
+  }
+
+  if (!compiledQuery.usesChoseong) {
     return false;
   }
 
-  const compactQuery = compactWhitespace(normalizedQuery);
+  return searchIndex.choseongFields.some((field) => field.includes(compiledQuery.compactQuery));
+}
 
-  return choseongFields.some((field) => {
-    const normalizedField = normalizeSearchText(field);
-    return (
-      normalizedField && compactWhitespace(getChoseong(normalizedField)).includes(compactQuery)
-    );
-  });
+export function matchesSearchQuery(fields, query, options = {}) {
+  return matchesCompiledSearchQuery(buildSearchIndex(fields, options), compileSearchQuery(query));
 }

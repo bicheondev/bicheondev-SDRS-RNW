@@ -63,7 +63,7 @@ export function filterVessels(vessels, harborFilter, vesselTypeFilter) {
     const matchesHarbor = harborFilter === '전체 항포구' || vessel.port === harborFilter;
     const matchesType =
       vesselTypeFilter === '전체 선박' ||
-      getVesselTypeFromBusiness(vessel.business) === vesselTypeFilter;
+      (vessel.vesselType ?? getVesselTypeFromBusiness(vessel.business)) === vesselTypeFilter;
 
     return matchesHarbor && matchesType;
   });

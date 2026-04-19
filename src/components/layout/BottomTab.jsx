@@ -1,14 +1,10 @@
 import { motion } from 'framer-motion';
+import { memo } from 'react';
 
 import { getPressMotion } from '../../motion.js';
 import { AppIcon } from '../Icons.jsx';
 
-export default function BottomTab({
-  activeTab = 'db',
-  onDbClick,
-  onManageClick,
-  onMenuClick,
-}) {
+function BottomTab({ activeTab = 'db', onDbClick, onManageClick, onMenuClick }) {
   return (
     <nav className="bottom-tab" aria-label="하단 탭">
       <motion.button
@@ -56,3 +52,5 @@ export default function BottomTab({
     </nav>
   );
 }
+
+export default memo(BottomTab);

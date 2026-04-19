@@ -1,4 +1,6 @@
 import {
+  useCallback,
+  useDeferredValue,
   startTransition,
   useEffect,
   useLayoutEffect,
@@ -11,7 +13,7 @@ import { buildDisplayVessels, buildHarborOptions } from '../../domain/databaseSt
 import { filterVessels } from '../../domain/ships.js';
 import { applySearchQuery } from './useVesselSearch.js';
 
-export function useDatabaseFilters({ activeTab, authScreen, shipRecords }) {
+export function useDatabaseFilters({ activeTab, isAppVisible, shipRecords }) {
   const [compact, setCompact] = useState(false);
   const [topBarHidden, setTopBarHidden] = useState(false);
   const [databaseView, setDatabaseView] = useState('browse');
@@ -26,6 +28,7 @@ export function useDatabaseFilters({ activeTab, authScreen, shipRecords }) {
   const scrollShowDistanceRef = useRef(0);
   const topBarHiddenRef = useRef(false);
   const revealLockScrollTopRef = useRef(0);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const displayVessels = useMemo(() => buildDisplayVessels(shipRecords), [shipRecords]);
   const harborOptions = useMemo(() => buildHarborOptions(shipRecords), [shipRecords]);
@@ -34,8 +37,8 @@ export function useDatabaseFilters({ activeTab, authScreen, shipRecords }) {
     [displayVessels, harborFilter, vesselTypeFilter],
   );
   const searchedDisplayVessels = useMemo(
-    () => applySearchQuery(filteredDisplayVessels, searchQuery),
-    [filteredDisplayVessels, searchQuery],
+    () => applySearchQuery(filteredDisplayVessels, deferredSearchQuery),
+    [deferredSearchQuery, filteredDisplayVessels],
   );
 
   useEffect(() => {
@@ -52,7 +55,7 @@ export function useDatabaseFilters({ activeTab, authScreen, shipRecords }) {
 
   useLayoutEffect(() => {
     if (
-      authScreen !== 'app' ||
+      !isAppVisible ||
       activeTab !== 'db' ||
       databaseView !== 'browse' ||
       !mainContentRef.current
@@ -61,132 +64,141 @@ export function useDatabaseFilters({ activeTab, authScreen, shipRecords }) {
     }
 
     mainContentRef.current.scrollTop = mainScrollPositionRef.current;
-  }, [activeTab, authScreen, databaseView]);
+  }, [activeTab, databaseView, isAppVisible]);
 
-  const handleCompactChange = (nextCompact) => {
-    if (compact === nextCompact) {
-      return;
-    }
+  const resetTransientUi = useCallback(() => {
+    topBarHiddenRef.current = false;
+    revealLockScrollTopRef.current = 0;
+    setTopBarHidden(false);
+    setFilterSheet(null);
+  }, []);
 
-    startTransition(() => {
-      setCompact(nextCompact);
-    });
-  };
+  const handleCompactChange = useCallback(
+    (nextCompact) => {
+      if (compact === nextCompact) {
+        return;
+      }
 
-  const handleMainScroll = (event) => {
-    if (activeTab !== 'db' || databaseView !== 'browse') {
-      return;
-    }
+      startTransition(() => {
+        setCompact(nextCompact);
+      });
+    },
+    [compact],
+  );
 
-    const currentScrollTop = event.currentTarget.scrollTop;
-    const lastScrollTop = lastScrollTopRef.current;
+  const handleMainScroll = useCallback(
+    (event) => {
+      if (activeTab !== 'db' || databaseView !== 'browse') {
+        return;
+      }
 
-    mainScrollPositionRef.current = currentScrollTop;
+      const currentScrollTop = event.currentTarget.scrollTop;
+      const lastScrollTop = lastScrollTopRef.current;
 
-    if (currentScrollTop <= 0) {
-      topBarHiddenRef.current = false;
-      setTopBarHidden(false);
-      lastScrollTopRef.current = 0;
-      scrollHideDistanceRef.current = 0;
-      scrollShowDistanceRef.current = 0;
-      revealLockScrollTopRef.current = 0;
-      return;
-    }
+      mainScrollPositionRef.current = currentScrollTop;
 
-    const delta = currentScrollTop - lastScrollTop;
-    const scrollingDown = delta > 0;
-    const scrollingUp = delta < 0;
-
-    if (scrollingDown) {
-      scrollHideDistanceRef.current += delta;
-      scrollShowDistanceRef.current = 0;
-    } else if (scrollingUp) {
-      scrollShowDistanceRef.current += Math.abs(delta);
-      scrollHideDistanceRef.current = 0;
-    }
-
-    if (currentScrollTop <= 72) {
-      if (topBarHiddenRef.current) {
+      if (currentScrollTop <= 0) {
         topBarHiddenRef.current = false;
         setTopBarHidden(false);
+        lastScrollTopRef.current = 0;
+        scrollHideDistanceRef.current = 0;
+        scrollShowDistanceRef.current = 0;
+        revealLockScrollTopRef.current = 0;
+        return;
       }
-      scrollHideDistanceRef.current = 0;
-      scrollShowDistanceRef.current = 0;
-      revealLockScrollTopRef.current = currentScrollTop + 40;
+
+      const delta = currentScrollTop - lastScrollTop;
+      const scrollingDown = delta > 0;
+      const scrollingUp = delta < 0;
+
+      if (scrollingDown) {
+        scrollHideDistanceRef.current += delta;
+        scrollShowDistanceRef.current = 0;
+      } else if (scrollingUp) {
+        scrollShowDistanceRef.current += Math.abs(delta);
+        scrollHideDistanceRef.current = 0;
+      }
+
+      if (currentScrollTop <= 72) {
+        if (topBarHiddenRef.current) {
+          topBarHiddenRef.current = false;
+          setTopBarHidden(false);
+        }
+        scrollHideDistanceRef.current = 0;
+        scrollShowDistanceRef.current = 0;
+        revealLockScrollTopRef.current = currentScrollTop + 40;
+        lastScrollTopRef.current = currentScrollTop;
+        return;
+      }
+
+      if (
+        !topBarHiddenRef.current &&
+        currentScrollTop > Math.max(24, revealLockScrollTopRef.current) &&
+        scrollHideDistanceRef.current > 24
+      ) {
+        topBarHiddenRef.current = true;
+        setTopBarHidden(true);
+        scrollHideDistanceRef.current = 0;
+        revealLockScrollTopRef.current = 0;
+      } else if (topBarHiddenRef.current && scrollShowDistanceRef.current > 18) {
+        topBarHiddenRef.current = false;
+        setTopBarHidden(false);
+        scrollShowDistanceRef.current = 0;
+        revealLockScrollTopRef.current = currentScrollTop + 40;
+      }
+
       lastScrollTopRef.current = currentScrollTop;
-      return;
-    }
+    },
+    [activeTab, databaseView],
+  );
 
-    if (
-      !topBarHiddenRef.current &&
-      currentScrollTop > Math.max(24, revealLockScrollTopRef.current) &&
-      scrollHideDistanceRef.current > 24
-    ) {
-      topBarHiddenRef.current = true;
-      setTopBarHidden(true);
-      scrollHideDistanceRef.current = 0;
-      revealLockScrollTopRef.current = 0;
-    } else if (topBarHiddenRef.current && scrollShowDistanceRef.current > 18) {
-      topBarHiddenRef.current = false;
-      setTopBarHidden(false);
-      scrollShowDistanceRef.current = 0;
-      revealLockScrollTopRef.current = currentScrollTop + 40;
-    }
-
-    lastScrollTopRef.current = currentScrollTop;
-  };
-
-  const resetDatabasePage = () => {
-    topBarHiddenRef.current = false;
-    revealLockScrollTopRef.current = 0;
-    setTopBarHidden(false);
-    setFilterSheet(null);
+  const resetDatabasePage = useCallback(() => {
+    resetTransientUi();
     setDatabaseView('browse');
-  };
+  }, [resetTransientUi]);
 
-  const openSearch = () => {
-    topBarHiddenRef.current = false;
-    revealLockScrollTopRef.current = 0;
-    setTopBarHidden(false);
-    setFilterSheet(null);
+  const openSearch = useCallback(() => {
+    resetTransientUi();
     setDatabaseView('search');
-  };
+  }, [resetTransientUi]);
 
-  const closeSearch = () => {
-    topBarHiddenRef.current = false;
-    revealLockScrollTopRef.current = 0;
-    setTopBarHidden(false);
-    setFilterSheet(null);
+  const closeSearch = useCallback(() => {
+    resetTransientUi();
     setDatabaseView('browse');
-  };
+  }, [resetTransientUi]);
 
-  const openFilter = (mode) => {
-    topBarHiddenRef.current = false;
-    revealLockScrollTopRef.current = 0;
-    setTopBarHidden(false);
-    setFilterSheet({
-      mode,
-      sourceView: databaseView,
-    });
-  };
+  const openFilter = useCallback(
+    (mode) => {
+      resetTransientUi();
+      setFilterSheet({
+        mode,
+        sourceView: databaseView,
+      });
+    },
+    [databaseView, resetTransientUi],
+  );
 
-  const closeFilter = () => {
+  const closeFilter = useCallback(() => {
     setFilterSheet(null);
-  };
+  }, []);
 
-  const handleFilterSearchOpen = () => {
+  const handleFilterSearchOpen = useCallback(() => {
     if (filterSheet?.sourceView === 'search') {
       closeFilter();
       return;
     }
 
     openSearch();
-  };
+  }, [closeFilter, filterSheet?.sourceView, openSearch]);
+  const clearSearchQuery = useCallback(() => {
+    setSearchQuery('');
+  }, []);
 
   return {
     closeFilter,
     closeSearch,
     compact,
+    clearSearchQuery,
     databaseView,
     displayVessels,
     filterSheet,
@@ -204,7 +216,6 @@ export function useDatabaseFilters({ activeTab, authScreen, shipRecords }) {
     searchedDisplayVessels,
     setHarborFilter,
     setSearchQuery,
-    setTopBarHidden,
     setVesselTypeFilter,
     topBarHidden,
     vesselTypeFilter,

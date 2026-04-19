@@ -36,6 +36,34 @@ export async function resolveInitialDatabaseState({
   return loadBundledDatabaseOrEmpty({ loadBundledState, createEmptyState });
 }
 
+async function loadInitialDatabaseState() {
+  const nextDatabase = await resolveInitialDatabaseState();
+
+  return {
+    ...nextDatabase,
+    shipRecords: applyImagesToShipRecords(nextDatabase.shipRecords, nextDatabase.imageEntries, {
+      preserveExisting: true,
+    }),
+  };
+}
+
+let initialDatabaseStatePromise = null;
+
+function getInitialDatabaseState() {
+  if (!initialDatabaseStatePromise) {
+    initialDatabaseStatePromise = loadInitialDatabaseState().catch((error) => {
+      initialDatabaseStatePromise = null;
+      throw error;
+    });
+  }
+
+  return initialDatabaseStatePromise;
+}
+
+export function preloadAppBootstrap() {
+  void getInitialDatabaseState();
+}
+
 export function useAppBootstrap() {
   const [databaseState, setDatabaseState] = useState(() => createEmptyDatabaseState());
   const [databaseReady, setDatabaseReady] = useState(false);
@@ -44,19 +72,11 @@ export function useAppBootstrap() {
     let cancelled = false;
 
     const initializeDatabase = async () => {
-      const nextDatabase = await resolveInitialDatabaseState();
+      const nextDatabase = await getInitialDatabaseState();
 
       if (cancelled) {
         return;
       }
-
-      nextDatabase.shipRecords = applyImagesToShipRecords(
-        nextDatabase.shipRecords,
-        nextDatabase.imageEntries,
-        {
-          preserveExisting: true,
-        },
-      );
 
       setDatabaseState(nextDatabase);
       setDatabaseReady(true);

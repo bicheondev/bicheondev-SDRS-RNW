@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { AnimatePresence } from 'framer-motion';
 
 import { vesselTypeOptions } from '../../assets/assets.js';
@@ -5,7 +6,7 @@ import { FilterScreen } from './FilterSheet.jsx';
 import { SearchTopBar, TopBar } from './DatabaseTopBars.jsx';
 import { VesselResults } from './VesselResults.jsx';
 
-export function DatabasePage({
+export const DatabasePage = memo(function DatabasePage({
   compact,
   databaseView,
   displayVessels,
@@ -100,4 +101,4 @@ export function DatabasePage({
       </AnimatePresence>
     </main>
   );
-}
+});

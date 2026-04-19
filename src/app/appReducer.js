@@ -2,9 +2,7 @@ const TAB_ORDER = ['db', 'manage', 'menu'];
 
 export const initialAppState = {
   activeTab: 'db',
-  password: '',
   tabTransition: 'none',
-  username: '',
   zoomSession: null,
 };
 
@@ -21,11 +19,6 @@ export function getTabTransition(currentTab, nextTab) {
 
 export function appReducer(state, action) {
   switch (action.type) {
-    case 'set-login-field':
-      return {
-        ...state,
-        [action.field]: action.value,
-      };
     case 'navigate-tab': {
       if (state.activeTab === action.nextTab) {
         return state;
@@ -48,9 +41,7 @@ export function appReducer(state, action) {
       return {
         ...state,
         activeTab: 'db',
-        password: '',
         tabTransition: 'none',
-        username: '',
         zoomSession: null,
       };
     case 'open-zoom':

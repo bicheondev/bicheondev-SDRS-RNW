@@ -56,28 +56,6 @@ function toSerializableRect(rect) {
   };
 }
 
-function resolvePresentedRect(rect, scale = 1, offsetY = 0) {
-  if (!rect) {
-    return null;
-  }
-
-  if (scale === 1 && offsetY === 0) {
-    return toSerializableRect(rect);
-  }
-
-  const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2 - offsetY;
-  const width = rect.width / scale;
-  const height = rect.height / scale;
-
-  return {
-    top: centerY - height / 2,
-    left: centerX - width / 2,
-    width,
-    height,
-  };
-}
-
 function findVisibleThumbnailTarget(vesselId) {
   if (typeof document === 'undefined') {
     return null;
@@ -281,11 +259,7 @@ export default function ImageZoomModal({ session, onClose }) {
     setViewport({ scale: MIN_ZOOM_SCALE, x: 0, y: 0 });
     setIsInteracting(false);
     setClosingSnapshot(null);
-  }, [
-    clearCloseAnimation,
-    setDismiss,
-    setViewport,
-  ]);
+  }, [clearCloseAnimation, setDismiss, setViewport]);
 
   const getBounds = (scale) => {
     const wrapRect = imageWrapRef.current?.getBoundingClientRect();
@@ -388,7 +362,6 @@ export default function ImageZoomModal({ session, onClose }) {
   }, [
     clearCloseAnimation,
     clearOpenAnimation,
-    closeToThumbnailDuration,
     isClosing,
     onClose,
     reducedMotion,
@@ -621,13 +594,7 @@ export default function ImageZoomModal({ session, onClose }) {
     });
 
     return () => window.cancelAnimationFrame(frameId);
-  }, [
-    closeToThumbnailDuration,
-    isPresented,
-    openingSourceRect,
-    openingSnapshot,
-    vessel,
-  ]);
+  }, [closeToThumbnailDuration, isPresented, openingSourceRect, openingSnapshot, vessel]);
 
   useEffect(() => {
     if (!session) {

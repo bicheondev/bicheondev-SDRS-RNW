@@ -1,5 +1,8 @@
 import noImagePlaceholder from '../../no-image.svg';
 
+import { buildSearchIndex } from './search.js';
+import { getVesselTypeFromBusiness } from './ships.js';
+
 export const DEFAULT_FILE_META = {
   ship: { name: 'ship.csv', imported: false, modified: false },
   images: { name: 'images.zip', imported: false, modified: false },
@@ -66,6 +69,8 @@ export function buildDisplayVessels(shipRecords) {
     detector: Boolean(record.detector),
     imageWide: record.image || noImagePlaceholder,
     imageCompact: record.image || noImagePlaceholder,
+    searchIndex: buildSearchIndex([record.title]),
+    vesselType: getVesselTypeFromBusiness(record.business),
   }));
 }
 

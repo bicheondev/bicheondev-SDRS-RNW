@@ -1,10 +1,4 @@
-import {
-  AnimatePresence,
-  motion,
-  Reorder,
-  useDragControls,
-  useReducedMotion,
-} from 'framer-motion';
+import { AnimatePresence, motion, Reorder, useDragControls, useReducedMotion } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { emptyManageShipCard } from '../appDomain';
@@ -16,7 +10,8 @@ import {
   motionTokens,
   getToastMotion,
 } from '../motion';
-import { assets, manageHomeSecondaryRows } from '../uiAssets';
+import { manageHomeSecondaryRows } from '../assets/assets.js';
+import manageImage from '../assets/ui/manageImage.png';
 import { AppIcon } from './Icons';
 
 function getManageListItemMotion(reducedMotion, isEntering = false) {
@@ -263,12 +258,7 @@ function ManageSubpageTopBar({
 function ManageSearchBar({ onChange, onClear, placeholder = '검색', value = '' }) {
   return (
     <div className="manage-search-bar">
-      <AppIcon
-        className="manage-search-bar__icon"
-        name="search"
-        preset="search"
-        tone="muted"
-      />
+      <AppIcon className="manage-search-bar__icon" name="search" preset="search" tone="muted" />
       <input
         className={`manage-search-bar__input ${value ? 'manage-search-bar__input--filled' : ''}`}
         type="text"
@@ -370,7 +360,7 @@ function ManageShipCard({
   const detectorEdited = editable
     ? Boolean(card.detector) !== Boolean(baselineCard.detector)
     : false;
-  const imageSource = card.image ?? assets.manageImage;
+  const imageSource = card.image ?? manageImage;
 
   const handleImageInputChange = (event) => {
     const [file] = event.target.files ?? [];
@@ -433,7 +423,7 @@ function ManageShipCard({
             aria-label="선박 정보 수정"
             onClick={onEditActivate}
             {...getPressMotion('icon')}
-        >
+          >
             <AppIcon
               className="manage-ship-card__edit-icon"
               name="edit"

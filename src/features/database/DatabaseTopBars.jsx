@@ -1,9 +1,9 @@
 import { motion } from 'framer-motion';
-import { useLayoutEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 
 import { getPressMotion } from '../../motion.js';
 import { AppIcon } from '../../components/Icons.jsx';
-import { assets } from '../../assets/assets.js';
+import logo from '../../assets/ui/logo.svg';
 
 function FiltersRow({
   blurViewOptions = false,
@@ -115,7 +115,7 @@ function FiltersRow({
   );
 }
 
-export function TopBar({
+export const TopBar = memo(function TopBar({
   blurViewOptions = false,
   compact,
   harborFilter,
@@ -139,7 +139,7 @@ export function TopBar({
       className={`top-bar ${hidden ? 'top-bar--hidden' : ''} ${inFilterSheet ? 'top-bar--filter-sheet' : ''}`}
     >
       <div className="top-bar__main">
-        <img className="top-bar__logo" src={assets.logo} alt="SDRS" />
+        <img className="top-bar__logo" src={logo} alt="SDRS" />
         <motion.button
           className="icon-button pressable-control pressable-control--icon"
           type="button"
@@ -169,9 +169,9 @@ export function TopBar({
       />
     </header>
   );
-}
+});
 
-export function SearchTopBar({
+export const SearchTopBar = memo(function SearchTopBar({
   compact,
   harborFilter,
   query,
@@ -185,17 +185,15 @@ export function SearchTopBar({
 }) {
   const inputRef = useRef(null);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     const focusInput = () => {
       inputRef.current?.focus({ preventScroll: true });
     };
 
     const frameId = window.requestAnimationFrame(focusInput);
-    const timeoutId = window.setTimeout(focusInput, 120);
 
     return () => {
       window.cancelAnimationFrame(frameId);
-      window.clearTimeout(timeoutId);
     };
   }, []);
 
@@ -257,4 +255,4 @@ export function SearchTopBar({
       />
     </header>
   );
-}
+});

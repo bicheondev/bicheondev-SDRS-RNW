@@ -1,4 +1,5 @@
-import { assets } from '../../assets/assets.js';
+import menuInfoLogo from '../../assets/ui/menuInfoLogo.svg';
+import menuInfoMark from '../../assets/ui/menuInfoMark.svg';
 import { MenuSubpageTopBar } from './MenuShared.jsx';
 
 export function MenuInfoPage({ onBack }) {
@@ -10,13 +11,9 @@ export function MenuInfoPage({ onBack }) {
         <div className="menu-info">
           <div className="menu-info__background" />
           <div className="menu-info__content">
-            <img className="menu-info__mark" src={assets.menuInfoMark} alt="" />
+            <img className="menu-info__mark" src={menuInfoMark} alt="" />
             <div className="menu-info__logo-wrap">
-              <img
-                className="menu-info__logo"
-                src={assets.menuInfoLogo}
-                alt="SDRS 선박DB조회체계"
-              />
+              <img className="menu-info__logo" src={menuInfoLogo} alt="SDRS 선박DB조회체계" />
             </div>
             <p className="menu-info__version">버전 1.0</p>
           </div>
