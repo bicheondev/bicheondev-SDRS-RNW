@@ -1,0 +1,14 @@
+:root {
+  --space-screen-edge: 18px;
+  --space-section-gap: 28px;
+  --space-card-gap: 12px;
+  --z-screen-base: 1;
+  --z-screen-top-bar: 2;
+  --z-screen-tab: 4;
+  --z-screen-overlay: 5;
+  --z-screen-zoom: 20;
+  --font-family-app:
+    'Pretendard GOV Variable', 'Pretendard GOV', -apple-system, BlinkMacSystemFont, system-ui,
+    Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic',
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;
+}

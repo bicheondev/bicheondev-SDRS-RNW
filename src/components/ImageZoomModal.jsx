@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useReducedMotion } from 'framer-motion';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 
 import { motionDurationsMs, motionTokens } from '../motion';
-import { assets } from '../uiAssets';
+import { AppIcon } from './Icons.jsx';
 
 const MIN_ZOOM_SCALE = 1;
 const MAX_ZOOM_SCALE = 4;
@@ -13,14 +13,12 @@ const TAP_MOVE_TOLERANCE = 12;
 const GESTURE_MIN_ZOOM_SCALE = 0.85;
 const GESTURE_MAX_ZOOM_SCALE = 4.5;
 const PAN_ELASTICITY = 0.24;
-const PAGE_SWIPE_THRESHOLD_RATIO = 0.18;
-const PAGE_SWIPE_MIN_DISTANCE = 56;
-const PAGE_SWIPE_VELOCITY = 0.35;
-const PAGE_SETTLE_DURATION = motionDurationsMs.fast;
 const CLOSE_TO_THUMBNAIL_DURATION = motionDurationsMs.image;
+const THUMBNAIL_REVEAL_LEAD_MS = 24;
 const DISMISS_CLOSE_DISTANCE = 140;
 const DISMISS_CLOSE_VELOCITY = 0.45;
 const DISMISS_MAX_OFFSET = 260;
+let lastAnimatedOpenSessionKey = null;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -58,13 +56,36 @@ function toSerializableRect(rect) {
   };
 }
 
+function resolvePresentedRect(rect, scale = 1, offsetY = 0) {
+  if (!rect) {
+    return null;
+  }
+
+  if (scale === 1 && offsetY === 0) {
+    return toSerializableRect(rect);
+  }
+
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2 - offsetY;
+  const width = rect.width / scale;
+  const height = rect.height / scale;
+
+  return {
+    top: centerY - height / 2,
+    left: centerX - width / 2,
+    width,
+    height,
+  };
+}
+
 function findVisibleThumbnailTarget(vesselId) {
   if (typeof document === 'undefined') {
     return null;
   }
 
   const rawId = String(vesselId ?? '');
-  const escapedId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(rawId) : rawId.replace(/["\\]/g, '\\$&');
+  const escapedId =
+    typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(rawId) : rawId.replace(/["\\]/g, '\\$&');
   const candidates = Array.from(document.querySelectorAll(`[data-vessel-thumb-id="${escapedId}"]`));
   let bestArea = 0;
   let bestTarget = null;
@@ -109,41 +130,67 @@ function findVisibleThumbnailTarget(vesselId) {
   return bestTarget;
 }
 
+function findSourceThumbnailTarget(sourceThumbToken) {
+  if (typeof document === 'undefined' || !sourceThumbToken) {
+    return null;
+  }
+
+  const rawToken = String(sourceThumbToken);
+  const escapedToken =
+    typeof CSS !== 'undefined' && CSS.escape
+      ? CSS.escape(rawToken)
+      : rawToken.replace(/["\\]/g, '\\$&');
+  const node = document.querySelector(`[data-zoom-thumb-source="${escapedToken}"]`);
+
+  if (!(node instanceof HTMLElement)) {
+    return null;
+  }
+
+  return {
+    node,
+    rect: toSerializableRect(node.getBoundingClientRect()),
+  };
+}
+
 export default function ImageZoomModal({ session, onClose }) {
   const imageWrapRef = useRef(null);
   const imageRef = useRef(null);
   const pointersRef = useRef(new Map());
   const gestureRef = useRef(null);
   const lastTapRef = useRef(null);
-  const pageTimeoutRef = useRef(null);
   const renderFrameRef = useRef(null);
   const presentFrameRef = useRef(null);
-  const closeAnimationFrameRef = useRef(null);
+  const finalizeCloseFrameRef = useRef(null);
+  const openTimeoutRef = useRef(null);
   const closeTimeoutRef = useRef(null);
   const dismissOffsetRef = useRef(0);
-  const pageOffsetRef = useRef(0);
   const transformRef = useRef({ scale: MIN_ZOOM_SCALE, x: 0, y: 0 });
   const hiddenThumbnailRef = useRef(null);
   const reducedMotion = useReducedMotion() ?? false;
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [viewportWidth, setViewportWidth] = useState(0);
+  const initialIndex = clamp(
+    session?.startIndex ?? 0,
+    0,
+    Math.max((session?.vessels?.length ?? 0) - 1, 0),
+  );
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [transform, setTransform] = useState(transformRef.current);
   const [dismissOffset, setDismissOffset] = useState(0);
-  const [pageOffset, setPageOffsetState] = useState(0);
   const [isInteracting, setIsInteracting] = useState(false);
   const [isPresented, setIsPresented] = useState(false);
+  const [openingSourceRect, setOpeningSourceRect] = useState(null);
+  const [openingSnapshot, setOpeningSnapshot] = useState(null);
   const [closingSnapshot, setClosingSnapshot] = useState(null);
 
   const vessels = session?.vessels ?? [];
   const boundedIndex = clamp(currentIndex, 0, Math.max(vessels.length - 1, 0));
   const vessel = vessels[boundedIndex] ?? null;
-  const hasPrevious = boundedIndex > 0;
-  const hasNext = boundedIndex < vessels.length - 1;
   const isClosing = Boolean(closingSnapshot);
-  const pageSettleDuration = reducedMotion ? motionDurationsMs.instant : PAGE_SETTLE_DURATION;
-  const closeToThumbnailDuration = reducedMotion ? motionDurationsMs.instant : CLOSE_TO_THUMBNAIL_DURATION;
+  const closeToThumbnailDuration = reducedMotion
+    ? motionDurationsMs.instant
+    : CLOSE_TO_THUMBNAIL_DURATION;
+  const thumbnailRevealDelay = Math.max(closeToThumbnailDuration - THUMBNAIL_REVEAL_LEAD_MS, 0);
 
-  const scheduleVisualCommit = () => {
+  const scheduleVisualCommit = useCallback(() => {
     if (renderFrameRef.current) {
       return;
     }
@@ -152,45 +199,45 @@ export default function ImageZoomModal({ session, onClose }) {
       renderFrameRef.current = null;
       setTransform(transformRef.current);
       setDismissOffset(dismissOffsetRef.current);
-      setPageOffsetState(pageOffsetRef.current);
     });
-  };
+  }, []);
 
-  const setViewport = (nextTransform) => {
-    transformRef.current = nextTransform;
-    scheduleVisualCommit();
-  };
+  const setViewport = useCallback(
+    (nextTransform) => {
+      transformRef.current = nextTransform;
+      scheduleVisualCommit();
+    },
+    [scheduleVisualCommit],
+  );
 
-  const setDismiss = (nextOffset) => {
-    dismissOffsetRef.current = nextOffset;
-    scheduleVisualCommit();
-  };
+  const setDismiss = useCallback(
+    (nextOffset) => {
+      dismissOffsetRef.current = nextOffset;
+      scheduleVisualCommit();
+    },
+    [scheduleVisualCommit],
+  );
 
-  const setPageOffset = (nextOffset) => {
-    pageOffsetRef.current = nextOffset;
-    scheduleVisualCommit();
-  };
-
-  const clearPageTimeout = () => {
-    if (pageTimeoutRef.current) {
-      window.clearTimeout(pageTimeoutRef.current);
-      pageTimeoutRef.current = null;
+  const clearOpenAnimation = useCallback(() => {
+    if (openTimeoutRef.current) {
+      window.clearTimeout(openTimeoutRef.current);
+      openTimeoutRef.current = null;
     }
-  };
+  }, []);
 
-  const clearCloseAnimation = () => {
-    if (closeAnimationFrameRef.current) {
-      window.cancelAnimationFrame(closeAnimationFrameRef.current);
-      closeAnimationFrameRef.current = null;
-    }
-
+  const clearCloseAnimation = useCallback(() => {
     if (closeTimeoutRef.current) {
       window.clearTimeout(closeTimeoutRef.current);
       closeTimeoutRef.current = null;
     }
-  };
 
-  const releaseHiddenThumbnail = () => {
+    if (finalizeCloseFrameRef.current) {
+      window.cancelAnimationFrame(finalizeCloseFrameRef.current);
+      finalizeCloseFrameRef.current = null;
+    }
+  }, []);
+
+  const releaseHiddenThumbnail = useCallback(() => {
     const hiddenThumbnail = hiddenThumbnailRef.current;
 
     if (!(hiddenThumbnail instanceof HTMLElement)) {
@@ -199,39 +246,46 @@ export default function ImageZoomModal({ session, onClose }) {
     }
 
     delete hiddenThumbnail.dataset.zoomThumbHidden;
+    delete hiddenThumbnail.dataset.zoomThumbSource;
     hiddenThumbnailRef.current = null;
-  };
+  }, []);
 
-  const syncHiddenThumbnail = (vesselId) => {
-    const nextTarget = findVisibleThumbnailTarget(vesselId);
-    const nextThumbnail = nextTarget?.node ?? null;
+  const syncHiddenThumbnail = useCallback(
+    (vesselId, sourceThumbToken = null) => {
+      const nextTarget =
+        findSourceThumbnailTarget(sourceThumbToken) ?? findVisibleThumbnailTarget(vesselId);
+      const nextThumbnail = nextTarget?.node ?? null;
 
-    if (hiddenThumbnailRef.current === nextThumbnail) {
+      if (hiddenThumbnailRef.current === nextThumbnail) {
+        return nextTarget;
+      }
+
+      releaseHiddenThumbnail();
+
+      if (nextThumbnail instanceof HTMLElement) {
+        nextThumbnail.dataset.zoomThumbHidden = 'true';
+        hiddenThumbnailRef.current = nextThumbnail;
+      }
+
       return nextTarget;
-    }
+    },
+    [releaseHiddenThumbnail],
+  );
 
-    releaseHiddenThumbnail();
-
-    if (nextThumbnail instanceof HTMLElement) {
-      nextThumbnail.dataset.zoomThumbHidden = 'true';
-      hiddenThumbnailRef.current = nextThumbnail;
-    }
-
-    return nextTarget;
-  };
-
-  const resetInteractionState = () => {
+  const resetInteractionState = useCallback(() => {
     pointersRef.current.clear();
     gestureRef.current = null;
     lastTapRef.current = null;
-    clearPageTimeout();
     clearCloseAnimation();
     setDismiss(0);
-    setPageOffset(0);
     setViewport({ scale: MIN_ZOOM_SCALE, x: 0, y: 0 });
     setIsInteracting(false);
     setClosingSnapshot(null);
-  };
+  }, [
+    clearCloseAnimation,
+    setDismiss,
+    setViewport,
+  ]);
 
   const getBounds = (scale) => {
     const wrapRect = imageWrapRef.current?.getBoundingClientRect();
@@ -246,8 +300,8 @@ export default function ImageZoomModal({ session, onClose }) {
     const imageHeight = imageNode.offsetHeight;
 
     return {
-      maxX: Math.max(0, ((imageWidth * activeScale) - wrapRect.width) / 2),
-      maxY: Math.max(0, ((imageHeight * activeScale) - wrapRect.height) / 2),
+      maxX: Math.max(0, (imageWidth * activeScale - wrapRect.width) / 2),
+      maxY: Math.max(0, (imageHeight * activeScale - wrapRect.height) / 2),
     };
   };
 
@@ -289,63 +343,16 @@ export default function ImageZoomModal({ session, onClose }) {
     commitTransform(finalScale, nextTransform.x, nextTransform.y);
   };
 
-  const resolveViewportWidth = () =>
-    viewportWidth ||
-    imageWrapRef.current?.getBoundingClientRect().width ||
-    (typeof window === 'undefined' ? 0 : window.innerWidth);
-
-  const applyPageElasticity = (nextOffset) => {
-    if ((nextOffset > 0 && !hasPrevious) || (nextOffset < 0 && !hasNext)) {
-      return applyElasticity(nextOffset, 0);
-    }
-
-    return nextOffset;
-  };
-
-  const animatePageChange = (direction) => {
-    if (pageTimeoutRef.current) {
-      return;
-    }
-
-    const targetIndex = boundedIndex + direction;
-    if (targetIndex < 0 || targetIndex >= vessels.length) {
-      setPageOffset(0);
-      return;
-    }
-
-    const nextViewportWidth = resolveViewportWidth();
-    setDismiss(0);
-    setViewport({ scale: MIN_ZOOM_SCALE, x: 0, y: 0 });
-
-    if (!nextViewportWidth) {
-      setCurrentIndex(targetIndex);
-      setPageOffset(0);
-      return;
-    }
-
-    if (pageSettleDuration === 0) {
-      setCurrentIndex(targetIndex);
-      setPageOffset(0);
-      return;
-    }
-
-    setPageOffset(-direction * nextViewportWidth);
-    clearPageTimeout();
-    pageTimeoutRef.current = window.setTimeout(() => {
-      setCurrentIndex(targetIndex);
-      setPageOffset(0);
-      pageTimeoutRef.current = null;
-    }, pageSettleDuration);
-  };
-
-  const requestClose = () => {
+  const requestClose = useCallback(() => {
     if (isClosing) {
       return;
     }
 
-    clearPageTimeout();
+    clearOpenAnimation();
     clearCloseAnimation();
     setIsInteracting(false);
+    setOpeningSourceRect(null);
+    setOpeningSnapshot(null);
 
     const fromRect = imageRef.current?.getBoundingClientRect();
     const thumbnailTarget =
@@ -354,7 +361,7 @@ export default function ImageZoomModal({ session, onClose }) {
             node: hiddenThumbnailRef.current,
             rect: toSerializableRect(hiddenThumbnailRef.current.getBoundingClientRect()),
           }
-        : syncHiddenThumbnail(vessel?.id);
+        : syncHiddenThumbnail(vessel?.id, session?.sourceThumbToken);
     const toRect = thumbnailTarget?.rect ?? null;
 
     if (reducedMotion || !fromRect || !toRect || !vessel) {
@@ -363,24 +370,34 @@ export default function ImageZoomModal({ session, onClose }) {
     }
 
     setClosingSnapshot({
-      src: vessel.imageWide,
       fromRect: toSerializableRect(fromRect),
+      src: vessel.imageWide,
       toRect,
-      animating: false,
-    });
-
-    closeAnimationFrameRef.current = window.requestAnimationFrame(() => {
-      closeAnimationFrameRef.current = window.requestAnimationFrame(() => {
-        closeAnimationFrameRef.current = null;
-        setClosingSnapshot((current) => (current ? { ...current, animating: true } : current));
-      });
     });
 
     closeTimeoutRef.current = window.setTimeout(() => {
       closeTimeoutRef.current = null;
-      onClose();
-    }, closeToThumbnailDuration);
-  };
+      releaseHiddenThumbnail();
+      finalizeCloseFrameRef.current = window.requestAnimationFrame(() => {
+        finalizeCloseFrameRef.current = window.requestAnimationFrame(() => {
+          finalizeCloseFrameRef.current = null;
+          onClose();
+        });
+      });
+    }, thumbnailRevealDelay);
+  }, [
+    clearCloseAnimation,
+    clearOpenAnimation,
+    closeToThumbnailDuration,
+    isClosing,
+    onClose,
+    reducedMotion,
+    releaseHiddenThumbnail,
+    syncHiddenThumbnail,
+    session,
+    thumbnailRevealDelay,
+    vessel,
+  ]);
 
   const zoomAtPoint = (targetScale, clientX, clientY) => {
     const wrapRect = imageWrapRef.current?.getBoundingClientRect();
@@ -391,7 +408,6 @@ export default function ImageZoomModal({ session, onClose }) {
 
     if (targetScale <= MIN_ZOOM_SCALE) {
       setDismiss(0);
-      setPageOffset(0);
       setViewport({ scale: MIN_ZOOM_SCALE, x: 0, y: 0 });
       return;
     }
@@ -405,11 +421,13 @@ export default function ImageZoomModal({ session, onClose }) {
     const nextY = clientY - centerY - targetScale * localY;
 
     setDismiss(0);
-    setPageOffset(0);
     commitTransform(targetScale, nextX, nextY);
   };
 
-  const beginSingleGesture = (pointer, mode = transformRef.current.scale > MIN_ZOOM_SCALE ? 'pan' : 'undecided') => {
+  const beginSingleGesture = (
+    pointer,
+    mode = transformRef.current.scale > MIN_ZOOM_SCALE ? 'pan' : 'undecided',
+  ) => {
     gestureRef.current = {
       type: 'single',
       mode,
@@ -429,7 +447,6 @@ export default function ImageZoomModal({ session, onClose }) {
         y: transformRef.current.y,
       },
       startDismissOffset: dismissOffsetRef.current,
-      startPageOffset: pageOffsetRef.current,
     };
     setIsInteracting(true);
   };
@@ -449,7 +466,6 @@ export default function ImageZoomModal({ session, onClose }) {
     const { scale, x, y } = transformRef.current;
 
     setDismiss(0);
-    setPageOffset(0);
     gestureRef.current = {
       type: 'pinch',
       initialScale: scale,
@@ -470,73 +486,148 @@ export default function ImageZoomModal({ session, onClose }) {
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         requestClose();
-        return;
-      }
-
-      if (transformRef.current.scale > MIN_ZOOM_SCALE) {
-        return;
-      }
-
-      if (event.key === 'ArrowLeft' && hasPrevious) {
-        event.preventDefault();
-        animatePageChange(-1);
-      } else if (event.key === 'ArrowRight' && hasNext) {
-        event.preventDefault();
-        animatePageChange(1);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [animatePageChange, hasNext, hasPrevious, requestClose, session, vessel]);
+  }, [requestClose, session, vessel]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!session) {
       return;
     }
 
-    setCurrentIndex(clamp(session.startIndex ?? 0, 0, Math.max(vessels.length - 1, 0)));
-  }, [session, vessels.length]);
+    setCurrentIndex(initialIndex);
+  }, [initialIndex, session]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!session) {
       releaseHiddenThumbnail();
       setIsPresented(false);
+      setOpeningSourceRect(null);
+      setOpeningSnapshot(null);
+      setClosingSnapshot(null);
       if (presentFrameRef.current) {
         window.cancelAnimationFrame(presentFrameRef.current);
         presentFrameRef.current = null;
       }
+      clearOpenAnimation();
+      clearCloseAnimation();
       return;
     }
 
     if (reducedMotion) {
+      setOpeningSourceRect(null);
+      setOpeningSnapshot(null);
+      setClosingSnapshot(null);
       setIsPresented(true);
       return;
     }
 
+    setOpeningSourceRect(null);
+    setOpeningSnapshot(null);
+    setClosingSnapshot(null);
     setIsPresented(false);
-    presentFrameRef.current = window.requestAnimationFrame(() => {
-      presentFrameRef.current = null;
-      setIsPresented(true);
-    });
 
     return () => {
       if (presentFrameRef.current) {
         window.cancelAnimationFrame(presentFrameRef.current);
         presentFrameRef.current = null;
       }
+
+      clearOpenAnimation();
+      clearCloseAnimation();
     };
-  }, [reducedMotion, session]);
+  }, [clearCloseAnimation, clearOpenAnimation, reducedMotion, releaseHiddenThumbnail, session]);
 
   useLayoutEffect(() => {
     if (!session || !vessel || isClosing) {
       return undefined;
     }
 
-    syncHiddenThumbnail(vessel.id);
+    const targetIndex = clamp(session.startIndex ?? 0, 0, Math.max(vessels.length - 1, 0));
+    const openSessionKey = `${session.openedAt ?? 'no-opened-at'}:${targetIndex}:${vessel.id}`;
+
+    if (boundedIndex !== targetIndex) {
+      return undefined;
+    }
+
+    const thumbnailTarget = syncHiddenThumbnail(vessel.id, session.sourceThumbToken);
+    const sourceRect = session.sourceRect ?? thumbnailTarget?.rect ?? null;
+
+    if (reducedMotion || openingSourceRect || openingSnapshot || isPresented) {
+      return undefined;
+    }
+
+    if (lastAnimatedOpenSessionKey === openSessionKey) {
+      setIsPresented(true);
+      return undefined;
+    }
+
+    if (!sourceRect) {
+      lastAnimatedOpenSessionKey = openSessionKey;
+      if (!presentFrameRef.current) {
+        presentFrameRef.current = window.requestAnimationFrame(() => {
+          presentFrameRef.current = null;
+          setIsPresented(true);
+        });
+      }
+
+      return undefined;
+    }
+
+    lastAnimatedOpenSessionKey = openSessionKey;
+    setOpeningSourceRect(sourceRect);
+    setIsPresented(true);
 
     return undefined;
-  }, [isClosing, session, vessel]);
+  }, [
+    boundedIndex,
+    isClosing,
+    isPresented,
+    openingSourceRect,
+    openingSnapshot,
+    reducedMotion,
+    session,
+    syncHiddenThumbnail,
+    vessel,
+    vessels.length,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!openingSourceRect || openingSnapshot || !isPresented || !imageRef.current) {
+      return undefined;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const rawToRect = imageRef.current?.getBoundingClientRect();
+
+      if (!rawToRect || rawToRect.width <= 0 || rawToRect.height <= 0) {
+        setOpeningSourceRect(null);
+        return;
+      }
+
+      setOpeningSnapshot({
+        fromRect: openingSourceRect,
+        src: vessel?.imageWide ?? '',
+        toRect: toSerializableRect(rawToRect),
+      });
+      openTimeoutRef.current = window.setTimeout(() => {
+        openTimeoutRef.current = null;
+        setOpeningSnapshot(null);
+        setOpeningSourceRect(null);
+      }, closeToThumbnailDuration);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [
+    closeToThumbnailDuration,
+    isPresented,
+    openingSourceRect,
+    openingSnapshot,
+    vessel,
+  ]);
 
   useEffect(() => {
     if (!session) {
@@ -544,35 +635,7 @@ export default function ImageZoomModal({ session, onClose }) {
     }
 
     resetInteractionState();
-  }, [currentIndex, session]);
-
-  useLayoutEffect(() => {
-    if (!session || !imageWrapRef.current) {
-      return undefined;
-    }
-
-    const updateViewportWidth = () => {
-      const wrapRect = imageWrapRef.current?.getBoundingClientRect();
-      if (!wrapRect) {
-        return;
-      }
-
-      setViewportWidth(wrapRect.width);
-    };
-
-    updateViewportWidth();
-
-    const resizeObserver =
-      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => updateViewportWidth());
-
-    resizeObserver?.observe(imageWrapRef.current);
-    window.addEventListener('resize', updateViewportWidth);
-
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', updateViewportWidth);
-    };
-  }, [currentIndex, session]);
+  }, [currentIndex, resetInteractionState, session]);
 
   useEffect(
     () => () => {
@@ -586,11 +649,16 @@ export default function ImageZoomModal({ session, onClose }) {
         presentFrameRef.current = null;
       }
 
-      clearPageTimeout();
+      if (finalizeCloseFrameRef.current) {
+        window.cancelAnimationFrame(finalizeCloseFrameRef.current);
+        finalizeCloseFrameRef.current = null;
+      }
+
+      clearOpenAnimation();
       clearCloseAnimation();
       releaseHiddenThumbnail();
     },
-    [],
+    [clearCloseAnimation, clearOpenAnimation, releaseHiddenThumbnail],
   );
 
   if (!session || !vessel) {
@@ -599,10 +667,6 @@ export default function ImageZoomModal({ session, onClose }) {
 
   const handlePointerDown = (event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) {
-      return;
-    }
-
-    if (pageTimeoutRef.current) {
       return;
     }
 
@@ -654,7 +718,8 @@ export default function ImageZoomModal({ session, onClose }) {
       const centerX = wrapRect.left + wrapRect.width / 2;
       const centerY = wrapRect.top + wrapRect.height / 2;
       const nextScale =
-        pinchGesture.initialScale * (getDistance(firstPointer, secondPointer) / pinchGesture.initialDistance);
+        pinchGesture.initialScale *
+        (getDistance(firstPointer, secondPointer) / pinchGesture.initialDistance);
       const nextX = midpoint.clientX - centerX - nextScale * pinchGesture.localMidpoint.x;
       const nextY = midpoint.clientY - centerY - nextScale * pinchGesture.localMidpoint.y;
 
@@ -666,7 +731,11 @@ export default function ImageZoomModal({ session, onClose }) {
     }
 
     const singleGesture = gestureRef.current;
-    if (!singleGesture || singleGesture.type !== 'single' || singleGesture.pointerId !== event.pointerId) {
+    if (
+      !singleGesture ||
+      singleGesture.type !== 'single' ||
+      singleGesture.pointerId !== event.pointerId
+    ) {
       return;
     }
 
@@ -690,9 +759,7 @@ export default function ImageZoomModal({ session, onClose }) {
       if (transformRef.current.scale > MIN_ZOOM_SCALE) {
         singleGesture.mode = 'pan';
       } else if (movedDistance > TAP_MOVE_TOLERANCE) {
-        if (Math.abs(deltaX) > Math.abs(deltaY)) {
-          singleGesture.mode = singleGesture.pointerType === 'touch' && vessels.length > 1 ? 'navigate' : 'ignore';
-        } else if (singleGesture.pointerType === 'touch') {
+        if (Math.abs(deltaY) > Math.abs(deltaX) && singleGesture.pointerType === 'touch') {
           singleGesture.mode = 'dismiss';
         } else {
           singleGesture.mode = 'ignore';
@@ -711,16 +778,11 @@ export default function ImageZoomModal({ session, onClose }) {
       return;
     }
 
-    if (singleGesture.mode === 'navigate') {
-      event.preventDefault();
-      setDismiss(0);
-      setPageOffset(applyPageElasticity(singleGesture.startPageOffset + deltaX));
-      return;
-    }
-
     if (singleGesture.mode === 'dismiss') {
       event.preventDefault();
-      setDismiss(clamp(singleGesture.startDismissOffset + deltaY, -DISMISS_MAX_OFFSET, DISMISS_MAX_OFFSET));
+      setDismiss(
+        clamp(singleGesture.startDismissOffset + deltaY, -DISMISS_MAX_OFFSET, DISMISS_MAX_OFFSET),
+      );
     }
   };
 
@@ -747,7 +809,10 @@ export default function ImageZoomModal({ session, onClose }) {
 
       if (remainingPointers.length === 1) {
         settleTransform();
-        beginSingleGesture(remainingPointers[0], transformRef.current.scale > MIN_ZOOM_SCALE ? 'pan' : 'undecided');
+        beginSingleGesture(
+          remainingPointers[0],
+          transformRef.current.scale > MIN_ZOOM_SCALE ? 'pan' : 'undecided',
+        );
         return;
       }
 
@@ -763,39 +828,16 @@ export default function ImageZoomModal({ session, onClose }) {
     if (cancelled) {
       lastTapRef.current = null;
       setDismiss(0);
-      setPageOffset(0);
       settleTransform();
       return;
     }
 
-    if (!currentGesture || currentGesture.type !== 'single' || currentGesture.pointerId !== event.pointerId) {
+    if (
+      !currentGesture ||
+      currentGesture.type !== 'single' ||
+      currentGesture.pointerId !== event.pointerId
+    ) {
       settleTransform();
-      return;
-    }
-
-    if (currentGesture.mode === 'navigate') {
-      const pageThreshold = Math.max(PAGE_SWIPE_MIN_DISTANCE, resolveViewportWidth() * PAGE_SWIPE_THRESHOLD_RATIO);
-      const shouldGoPrevious =
-        hasPrevious &&
-        (pageOffsetRef.current >= pageThreshold || currentGesture.velocityX >= PAGE_SWIPE_VELOCITY);
-      const shouldGoNext =
-        hasNext &&
-        (pageOffsetRef.current <= -pageThreshold || currentGesture.velocityX <= -PAGE_SWIPE_VELOCITY);
-
-      if (shouldGoPrevious) {
-        lastTapRef.current = null;
-        animatePageChange(-1);
-        return;
-      }
-
-      if (shouldGoNext) {
-        lastTapRef.current = null;
-        animatePageChange(1);
-        return;
-      }
-
-      lastTapRef.current = null;
-      setPageOffset(0);
       return;
     }
 
@@ -810,7 +852,6 @@ export default function ImageZoomModal({ session, onClose }) {
       }
 
       setDismiss(0);
-      setPageOffset(0);
       setViewport({ scale: MIN_ZOOM_SCALE, x: 0, y: 0 });
       return;
     }
@@ -850,24 +891,17 @@ export default function ImageZoomModal({ session, onClose }) {
   const dismissProgress = clamp(Math.abs(dismissOffset) / DISMISS_MAX_OFFSET, 0, 1);
   const backdropOpacity = transform.scale > MIN_ZOOM_SCALE ? 1 : 1 - dismissProgress * 0.7;
   const presentedBackdropOpacity = isPresented ? backdropOpacity : 0;
-  const effectiveBackdropOpacity = closingSnapshot?.animating ? 0 : presentedBackdropOpacity;
-  const stageBaseScale = transform.scale > MIN_ZOOM_SCALE ? 1 : 1 - dismissProgress * 0.08;
-  const presentationScale = reducedMotion || isPresented ? 1 : motionTokens.scale.modalEnter;
-  const presentationOffset = reducedMotion || isPresented ? 0 : motionTokens.offset.modalLift;
-  const stageScale = stageBaseScale * presentationScale;
-  const trackOffset = pageOffset - boundedIndex * resolveViewportWidth();
+  const effectiveBackdropOpacity = isClosing ? 0 : presentedBackdropOpacity;
+  const stageScale = transform.scale > MIN_ZOOM_SCALE ? 1 : 1 - dismissProgress * 0.08;
   const imageWrapClassName = [
     'zoom-modal__image-wrap',
     transform.scale > MIN_ZOOM_SCALE ? 'zoom-modal__image-wrap--zoomed' : '',
     isInteracting && transform.scale > MIN_ZOOM_SCALE ? 'zoom-modal__image-wrap--dragging' : '',
-    isClosing ? 'zoom-modal__image-wrap--hidden' : '',
+    openingSourceRect || openingSnapshot || isClosing ? 'zoom-modal__image-wrap--hidden' : '',
   ]
     .filter(Boolean)
     .join(' ');
-  const closingRect = closingSnapshot?.fromRect ?? null;
-  const closingTargetRect = closingSnapshot?.toRect ?? null;
-  const activeClosingRect =
-    closingSnapshot?.animating && closingTargetRect ? closingTargetRect : closingRect;
+  const transitionSnapshot = openingSnapshot ?? closingSnapshot;
 
   return (
     <div
@@ -875,18 +909,31 @@ export default function ImageZoomModal({ session, onClose }) {
       role="dialog"
       aria-modal="true"
       aria-label={`${vessel.name} 이미지 확대`}
-      style={{ backgroundColor: `rgba(0, 0, 0, ${effectiveBackdropOpacity})` }}
+      style={{
+        '--zoom-close-duration': `${closeToThumbnailDuration}ms`,
+        backgroundColor: `rgba(0, 0, 0, ${effectiveBackdropOpacity})`,
+      }}
     >
-      <button className="zoom-modal__backdrop interaction-reset" type="button" aria-label="확대 이미지 닫기" onClick={requestClose} />
+      <button
+        className="zoom-modal__backdrop interaction-reset"
+        type="button"
+        aria-label="확대 이미지 닫기"
+        onClick={requestClose}
+      />
       <div className="zoom-modal__frame">
         <button
           className="zoom-modal__close pressable-control pressable-control--icon"
           type="button"
           aria-label="닫기"
           onClick={requestClose}
-          style={{ opacity: isClosing ? 0 : presentedBackdropOpacity }}
+          style={{ opacity: openingSnapshot || isClosing ? 0 : presentedBackdropOpacity }}
         >
-          <img src={assets.zoomClose} alt="" />
+          <AppIcon
+            className="zoom-modal__close-icon"
+            name="close"
+            preset="modalClose"
+            tone="current"
+          />
         </button>
 
         <div
@@ -898,63 +945,58 @@ export default function ImageZoomModal({ session, onClose }) {
           onPointerUp={finishPointerInteraction}
         >
           <div
-            className={`zoom-modal__track ${isInteracting ? '' : 'zoom-modal__track--settling'}`.trim()}
-            style={{ transform: `translate3d(${trackOffset}px, 0, 0)` }}
+            className={`zoom-modal__image-stage ${
+              !isInteracting ? 'zoom-modal__image-stage--settling' : ''
+            }`.trim()}
+            style={{
+              transform: `translate3d(0, ${dismissOffset}px, 0) scale(${stageScale})`,
+            }}
           >
-            {vessels.map((entry, index) => {
-              const isActiveSlide = index === boundedIndex;
-
-              return (
-                <div key={entry.id} className="zoom-modal__slide" aria-hidden={!isActiveSlide}>
-                  <div
-                    className={`zoom-modal__image-stage ${
-                      isActiveSlide && !isInteracting ? 'zoom-modal__image-stage--settling' : ''
-                    }`.trim()}
-                    style={
-                      isActiveSlide
-                        ? { transform: `translate3d(0, ${dismissOffset + presentationOffset}px, 0) scale(${stageScale})` }
-                        : undefined
-                    }
-                  >
-                    <div
-                      className={`zoom-modal__image-pan ${
-                        isActiveSlide && !isInteracting ? 'zoom-modal__image-pan--settling' : ''
-                      }`.trim()}
-                      style={isActiveSlide ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined}
-                    >
-                      <img
-                        ref={isActiveSlide ? imageRef : null}
-                        className={`zoom-modal__image ${
-                          isActiveSlide && !isInteracting ? 'zoom-modal__image--settling' : ''
-                        }`.trim()}
-                        src={entry.imageWide}
-                        alt={`${entry.name} 선박 이미지`}
-                        draggable={false}
-                        loading={Math.abs(index - boundedIndex) <= 1 ? 'eager' : 'lazy'}
-                        style={isActiveSlide ? { transform: `scale(${transform.scale})` } : undefined}
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            <div
+              className={`zoom-modal__image-pan ${
+                !isInteracting ? 'zoom-modal__image-pan--settling' : ''
+              }`.trim()}
+              style={{ transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }}
+            >
+              <img
+                ref={imageRef}
+                className={`zoom-modal__image ${
+                  !isInteracting ? 'zoom-modal__image--settling' : ''
+                }`.trim()}
+                src={vessel.imageWide}
+                alt={`${vessel.name} 선박 이미지`}
+                draggable={false}
+                loading="eager"
+                style={{ transform: `scale(${transform.scale})` }}
+              />
+            </div>
           </div>
         </div>
 
-        {closingRect ? (
-          <div
-            className={`zoom-modal__closing-image ${closingSnapshot.animating ? 'zoom-modal__closing-image--animating' : ''}`.trim()}
-            style={{
-              top: `${activeClosingRect.top}px`,
-              left: `${activeClosingRect.left}px`,
-              width: `${activeClosingRect.width}px`,
-              height: `${activeClosingRect.height}px`,
-              borderRadius: `${closingSnapshot.animating ? motionTokens.radius.thumbnail : 0}px`,
-              opacity: closingSnapshot.animating ? 0.92 : 1,
+        {transitionSnapshot ? (
+          <motion.div
+            className="zoom-modal__transition-image"
+            initial={{
+              top: transitionSnapshot.fromRect.top,
+              left: transitionSnapshot.fromRect.left,
+              width: transitionSnapshot.fromRect.width,
+              height: transitionSnapshot.fromRect.height,
+              borderRadius: openingSnapshot ? motionTokens.radius.thumbnail : 0,
+            }}
+            animate={{
+              top: transitionSnapshot.toRect.top,
+              left: transitionSnapshot.toRect.left,
+              width: transitionSnapshot.toRect.width,
+              height: transitionSnapshot.toRect.height,
+              borderRadius: openingSnapshot ? 0 : motionTokens.radius.thumbnail,
+            }}
+            transition={{
+              duration: closeToThumbnailDuration / 1000,
+              ease: reducedMotion ? motionTokens.ease.linear : motionTokens.ease.ios,
             }}
           >
-            <img src={closingSnapshot.src} alt="" />
-          </div>
+            <img src={transitionSnapshot.src} alt="" />
+          </motion.div>
         ) : null}
       </div>
     </div>

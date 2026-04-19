@@ -1,5 +1,6 @@
 const toMilliseconds = (seconds) => `${Math.round(seconds * 1000)}ms`;
 const toBezier = (points) => `cubic-bezier(${points.join(', ')})`;
+const reverseBezier = ([x1, y1, x2, y2]) => [1 - x2, 1 - y2, 1 - x1, 1 - y1];
 
 export const motionTokens = {
   ease: {
@@ -67,8 +68,12 @@ export const motionDurationsMs = {
 
 export function getMotionCssVariables(reducedMotion = false) {
   const fastDuration = reducedMotion ? motionTokens.reduced.duration : motionTokens.duration.fast;
-  const normalDuration = reducedMotion ? motionTokens.reduced.duration : motionTokens.duration.normal;
-  const screenDuration = reducedMotion ? motionTokens.reduced.duration : motionTokens.duration.screen;
+  const normalDuration = reducedMotion
+    ? motionTokens.reduced.duration
+    : motionTokens.duration.normal;
+  const screenDuration = reducedMotion
+    ? motionTokens.reduced.duration
+    : motionTokens.duration.screen;
   const imageDuration = reducedMotion ? motionTokens.reduced.duration : motionTokens.duration.image;
 
   return {
@@ -141,8 +146,22 @@ const SCREEN_STATES = {
   },
 };
 
-export const hiddenScreenState = { opacity: 0, x: 0, y: 0, scale: 1, filter: 'blur(0px)', boxShadow: noScreenShadow };
-export const visibleScreenState = { opacity: 1, x: 0, y: 0, scale: 1, filter: 'blur(0px)', boxShadow: noScreenShadow };
+export const hiddenScreenState = {
+  opacity: 0,
+  x: 0,
+  y: 0,
+  scale: 1,
+  filter: 'blur(0px)',
+  boxShadow: noScreenShadow,
+};
+export const visibleScreenState = {
+  opacity: 1,
+  x: 0,
+  y: 0,
+  scale: 1,
+  filter: 'blur(0px)',
+  boxShadow: noScreenShadow,
+};
 
 export function getScreenMotionState(direction, phase, reducedMotion = false) {
   if (reducedMotion) {
@@ -157,7 +176,10 @@ export function getScreenMotionState(direction, phase, reducedMotion = false) {
     return hiddenScreenState;
   }
 
-  return SCREEN_STATES[direction]?.[phase] ?? (phase === 'enter' ? visibleScreenState : hiddenScreenState);
+  return (
+    SCREEN_STATES[direction]?.[phase] ??
+    (phase === 'enter' ? visibleScreenState : hiddenScreenState)
+  );
 }
 
 export function getScreenOverlayState(direction, phase, reducedMotion = false) {
@@ -275,7 +297,12 @@ export function getScreenZIndex(direction, entering) {
     return 3;
   }
 
-  if (direction === 'tabForward' || direction === 'tabBackward' || direction === 'pop' || direction === 'logout') {
+  if (
+    direction === 'tabForward' ||
+    direction === 'tabBackward' ||
+    direction === 'pop' ||
+    direction === 'logout'
+  ) {
     return 3;
   }
 
@@ -283,24 +310,58 @@ export function getScreenZIndex(direction, entering) {
 }
 
 export function getSheetOverlayMotion(reducedMotion = false) {
+  const duration = reducedMotion ? motionTokens.reduced.duration : motionTokens.duration.fast;
+
   return {
-    initial: { opacity: 0 },
-    animate: { opacity: 1 },
-    exit: { opacity: 0 },
-    transition: reducedMotion
-      ? { duration: motionTokens.reduced.duration, ease: motionTokens.ease.linear }
-      : { duration: motionTokens.duration.fast, ease: motionTokens.ease.ios },
+    initial: 'closed',
+    animate: 'open',
+    exit: 'closed',
+    variants: {
+      open: {
+        opacity: 1,
+        transition: {
+          duration,
+          ease: reducedMotion ? motionTokens.ease.linear : motionTokens.ease.ios,
+        },
+      },
+      closed: {
+        opacity: 0,
+        transition: {
+          duration,
+          ease: reducedMotion ? motionTokens.ease.linear : reverseBezier(motionTokens.ease.ios),
+        },
+      },
+    },
   };
 }
 
 export function getSheetPanelMotion(reducedMotion = false) {
+  const duration = reducedMotion ? motionTokens.reduced.duration : motionTokens.duration.normal;
+  const closedState = reducedMotion
+    ? { opacity: 0 }
+    : { opacity: 0, y: motionTokens.offset.sheetLift };
+
   return {
-    initial: reducedMotion ? { opacity: 0 } : { opacity: 0, y: motionTokens.offset.sheetLift },
-    animate: { opacity: 1, y: 0 },
-    exit: reducedMotion ? { opacity: 0 } : { opacity: 0, y: motionTokens.offset.sheetLift },
-    transition: reducedMotion
-      ? { duration: motionTokens.reduced.duration, ease: motionTokens.ease.linear }
-      : motionTokens.spring.sheet,
+    initial: 'closed',
+    animate: 'open',
+    exit: 'closed',
+    variants: {
+      open: {
+        opacity: 1,
+        y: 0,
+        transition: {
+          duration,
+          ease: reducedMotion ? motionTokens.ease.linear : motionTokens.ease.ios,
+        },
+      },
+      closed: {
+        ...closedState,
+        transition: {
+          duration,
+          ease: reducedMotion ? motionTokens.ease.linear : reverseBezier(motionTokens.ease.ios),
+        },
+      },
+    },
   };
 }
 
@@ -324,7 +385,11 @@ export function getModalCardMotion(reducedMotion = false) {
     animate: { opacity: 1, y: 0, scale: 1 },
     exit: reducedMotion
       ? { opacity: 0 }
-      : { opacity: 0, y: motionTokens.offset.modalLift * 0.72, scale: motionTokens.scale.toastEnter },
+      : {
+          opacity: 0,
+          y: motionTokens.offset.modalLift * 0.72,
+          scale: motionTokens.scale.toastEnter,
+        },
     transition: reducedMotion
       ? { duration: motionTokens.reduced.duration, ease: motionTokens.ease.linear }
       : motionTokens.spring.modal,

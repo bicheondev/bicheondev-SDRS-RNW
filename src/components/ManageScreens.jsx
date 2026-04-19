@@ -1,11 +1,23 @@
-import { AnimatePresence, motion, Reorder, useDragControls, useReducedMotion } from 'framer-motion';
-import { useEffect, useRef, useState } from 'react';
+import {
+  AnimatePresence,
+  motion,
+  Reorder,
+  useDragControls,
+  useReducedMotion,
+} from 'framer-motion';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { emptyManageShipCard } from '../appDomain';
 import { matchesSearchQuery } from '../search';
-import { getModalBackdropMotion, getModalCardMotion, getPressMotion, getToastMotion } from '../motion';
+import {
+  getModalBackdropMotion,
+  getModalCardMotion,
+  getPressMotion,
+  motionTokens,
+  getToastMotion,
+} from '../motion';
 import { assets, manageHomeSecondaryRows } from '../uiAssets';
-import { DeleteIcon, PlusIcon, StatusIcon } from './Icons';
+import { AppIcon } from './Icons';
 
 function getManageListItemMotion(reducedMotion, isEntering = false) {
   if (reducedMotion) {
@@ -65,8 +77,17 @@ function DataManagementHomeRow({ label, onClick, tone = 'default', value }) {
       <span className="manage-home__label">{label}</span>
       {value ? (
         <span className="manage-home__value-group">
-          <span className={`manage-home__value ${tone === 'blue' ? 'manage-home__value--blue' : ''}`}>{value}</span>
-          <img className="manage-home__chevron" src={assets.manageChevron} alt="" />
+          <span
+            className={`manage-home__value ${tone === 'blue' ? 'manage-home__value--blue' : ''}`}
+          >
+            {value}
+          </span>
+          <AppIcon
+            className="manage-home__chevron"
+            name="arrow_forward_ios"
+            preset="iosArrow"
+            tone="muted"
+          />
         </span>
       ) : null}
     </Tag>
@@ -172,7 +193,16 @@ export function DataManagementHomeScreen({
   );
 }
 
-function ManageSubpageTopBar({ saveActive = false, saveLabel = '저장', title, onAdd, onBack, onSave }) {
+function ManageSubpageTopBar({
+  saveActive = false,
+  saveLabel = '저장',
+  title,
+  titleHidden = false,
+  titleRef,
+  onAdd,
+  onBack,
+  onSave,
+}) {
   return (
     <>
       <header className="manage-subpage__top-bar">
@@ -183,7 +213,12 @@ function ManageSubpageTopBar({ saveActive = false, saveLabel = '저장', title, 
           onClick={onBack}
           {...getPressMotion('icon')}
         >
-          <img src={assets.manageBack} alt="" />
+          <AppIcon
+            className="detail-back-button__icon"
+            name="arrow_back_ios_new"
+            preset="iosArrow"
+            tone="secondary"
+          />
         </motion.button>
         <div className="manage-subpage__actions">
           {onAdd ? (
@@ -194,7 +229,12 @@ function ManageSubpageTopBar({ saveActive = false, saveLabel = '저장', title, 
               onClick={onAdd}
               {...getPressMotion('icon')}
             >
-              <PlusIcon className="manage-subpage__add-icon" />
+              <AppIcon
+                className="manage-subpage__add-icon"
+                name="add"
+                preset="plus"
+                tone="accent"
+              />
             </motion.button>
           ) : null}
           <motion.button
@@ -208,7 +248,14 @@ function ManageSubpageTopBar({ saveActive = false, saveLabel = '저장', title, 
           </motion.button>
         </div>
       </header>
-      <h1 className="manage-screen__title manage-screen__title--subpage">{title}</h1>
+      <h1
+        ref={titleRef}
+        className={`manage-screen__title manage-screen__title--subpage ${
+          titleHidden ? 'manage-screen__title--hidden' : ''
+        }`.trim()}
+      >
+        {title}
+      </h1>
     </>
   );
 }
@@ -216,7 +263,12 @@ function ManageSubpageTopBar({ saveActive = false, saveLabel = '저장', title, 
 function ManageSearchBar({ onChange, onClear, placeholder = '검색', value = '' }) {
   return (
     <div className="manage-search-bar">
-      <img className="manage-search-bar__icon" src={assets.manageSearch} alt="" />
+      <AppIcon
+        className="manage-search-bar__icon"
+        name="search"
+        preset="search"
+        tone="muted"
+      />
       <input
         className={`manage-search-bar__input ${value ? 'manage-search-bar__input--filled' : ''}`}
         type="text"
@@ -233,7 +285,12 @@ function ManageSearchBar({ onChange, onClear, placeholder = '검색', value = ''
           onClick={onClear}
           {...getPressMotion('icon')}
         >
-          <img className="manage-search-bar__cancel" src={assets.manageCancel} alt="" />
+          <AppIcon
+            className="manage-search-bar__cancel"
+            name="cancel"
+            preset="closeChip"
+            tone="muted"
+          />
         </motion.button>
       ) : null}
     </div>
@@ -293,6 +350,7 @@ function ManageTextBox({
 function ManageShipCard({
   card,
   editable = false,
+  isDragging = false,
   originalCard,
   showDeleteButton = false,
   showEditButton = false,
@@ -309,7 +367,9 @@ function ManageShipCard({
   const businessEdited = editable ? card.business !== baselineCard.business : false;
   const tonnageEdited = editable ? card.tonnage !== baselineCard.tonnage : false;
   const sonarEdited = editable ? Boolean(card.sonar) !== Boolean(baselineCard.sonar) : false;
-  const detectorEdited = editable ? Boolean(card.detector) !== Boolean(baselineCard.detector) : false;
+  const detectorEdited = editable
+    ? Boolean(card.detector) !== Boolean(baselineCard.detector)
+    : false;
   const imageSource = card.image ?? assets.manageImage;
 
   const handleImageInputChange = (event) => {
@@ -321,7 +381,11 @@ function ManageShipCard({
   };
 
   return (
-    <article className={`manage-ship-card ${card.selected ? 'manage-ship-card--selected' : ''}`}>
+    <article
+      className={`manage-ship-card ${
+        card.selected ? 'manage-ship-card--selected' : ''
+      } ${isDragging ? 'manage-ship-card--dragging' : ''}`.trim()}
+    >
       <div className="manage-ship-card__hero">
         <div className="manage-ship-card__identity">
           <ManageTextBox
@@ -369,8 +433,13 @@ function ManageShipCard({
             aria-label="선박 정보 수정"
             onClick={onEditActivate}
             {...getPressMotion('icon')}
-          >
-            <img src={assets.manageEdit} alt="" />
+        >
+            <AppIcon
+              className="manage-ship-card__edit-icon"
+              name="edit"
+              preset="action"
+              tone="on-accent"
+            />
           </motion.button>
         ) : null}
       </div>
@@ -378,15 +447,30 @@ function ManageShipCard({
       <div className="manage-ship-card__details">
         <div className="manage-ship-card__row">
           <span className="manage-ship-card__label">항포구</span>
-          <ManageFieldInput edited={portEdited} onChange={(nextValue) => onFieldChange?.('port', nextValue)} readOnly={!editable} value={card.port} />
+          <ManageFieldInput
+            edited={portEdited}
+            onChange={(nextValue) => onFieldChange?.('port', nextValue)}
+            readOnly={!editable}
+            value={card.port}
+          />
         </div>
         <div className="manage-ship-card__row">
           <span className="manage-ship-card__label">업종</span>
-          <ManageFieldInput edited={businessEdited} onChange={(nextValue) => onFieldChange?.('business', nextValue)} readOnly={!editable} value={card.business} />
+          <ManageFieldInput
+            edited={businessEdited}
+            onChange={(nextValue) => onFieldChange?.('business', nextValue)}
+            readOnly={!editable}
+            value={card.business}
+          />
         </div>
         <div className="manage-ship-card__row">
           <span className="manage-ship-card__label">총톤수</span>
-          <ManageFieldInput edited={tonnageEdited} onChange={(nextValue) => onFieldChange?.('tonnage', nextValue)} readOnly={!editable} value={card.tonnage} />
+          <ManageFieldInput
+            edited={tonnageEdited}
+            onChange={(nextValue) => onFieldChange?.('tonnage', nextValue)}
+            readOnly={!editable}
+            value={card.tonnage}
+          />
         </div>
       </div>
 
@@ -408,7 +492,12 @@ function ManageShipCard({
           {...getPressMotion('button')}
         >
           <span className="manage-ship-card__equipment-label">소나</span>
-          <StatusIcon name={card.sonar ? 'check' : 'close'} className="status-icon--manage" />
+          <AppIcon
+            className="status-icon status-icon--manage status-icon--equipment-small"
+            name={card.sonar ? 'check' : 'close'}
+            preset="statusSmall"
+            tone={sonarEdited ? 'accent' : card.sonar ? 'violet' : 'violet-muted'}
+          />
         </motion.button>
         <motion.button
           className={`manage-ship-card__equipment-item pressable-control pressable-control--surface ${
@@ -425,7 +514,12 @@ function ManageShipCard({
           {...getPressMotion('button')}
         >
           <span className="manage-ship-card__equipment-label">어군 탐지기</span>
-          <StatusIcon name={card.detector ? 'check' : 'close'} className="status-icon--manage" />
+          <AppIcon
+            className="status-icon status-icon--manage status-icon--equipment-small"
+            name={card.detector ? 'check' : 'close'}
+            preset="statusSmall"
+            tone={detectorEdited ? 'accent' : card.detector ? 'violet' : 'violet-muted'}
+          />
         </motion.button>
       </div>
 
@@ -437,7 +531,12 @@ function ManageShipCard({
           onClick={onDelete}
           {...getPressMotion('button')}
         >
-          <DeleteIcon className="manage-ship-card__delete-icon" />
+          <AppIcon
+            className="manage-ship-card__delete-icon"
+            name="delete"
+            preset="action"
+            tone="danger"
+          />
         </motion.button>
       ) : null}
     </article>
@@ -456,6 +555,13 @@ function ManageShipReorderItem({
 }) {
   const reducedMotion = useReducedMotion() ?? false;
   const listItemMotion = getManageListItemMotion(reducedMotion, isEntering);
+  const reorderSpring = reducedMotion
+    ? { duration: motionTokens.reduced.duration, ease: 'linear' }
+    : { type: 'spring', stiffness: 720, damping: 48, mass: 0.72 };
+  const itemTransition = {
+    ...listItemMotion.transition,
+    layout: reorderSpring,
+  };
   const dragControls = useDragControls();
   const longPressTimerRef = useRef(null);
   const pointerIdRef = useRef(null);
@@ -464,21 +570,21 @@ function ManageShipReorderItem({
   const [isArmed, setIsArmed] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
-  const clearLongPressTimer = () => {
+  const clearLongPressTimer = useCallback(() => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
-  };
+  }, []);
 
-  const resetLongPressState = () => {
+  const resetLongPressState = useCallback(() => {
     clearLongPressTimer();
     pointerIdRef.current = null;
     dragStartedRef.current = false;
     setIsArmed(false);
-  };
+  }, [clearLongPressTimer]);
 
-  useEffect(() => resetLongPressState, []);
+  useEffect(() => resetLongPressState, [resetLongPressState]);
 
   const handlePointerDown = (event) => {
     if (event.button !== undefined && event.button !== 0) {
@@ -502,8 +608,8 @@ function ManageShipReorderItem({
       if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
         navigator.vibrate(12);
       }
-      dragControls.start(nativeEvent, { snapToCursor: false });
-    }, 260);
+      dragControls.start(nativeEvent, { snapToCursor: false, distanceThreshold: 0 });
+    }, 220);
   };
 
   const handlePointerMove = (event) => {
@@ -529,17 +635,36 @@ function ManageShipReorderItem({
   };
 
   return (
-    <motion.div ref={itemRef} className="manage-edit-screen__reorder-entry" layout {...listItemMotion}>
+    <>
       <Reorder.Item
+        ref={itemRef}
         as="div"
-        className={`manage-edit-screen__reorder-item ${isDragging ? 'manage-edit-screen__reorder-item--dragging' : ''}`.trim()}
+        className={`manage-edit-screen__reorder-entry manage-edit-screen__reorder-item ${
+          isDragging
+            ? 'manage-edit-screen__reorder-entry--dragging manage-edit-screen__reorder-item--dragging'
+            : ''
+        }`.trim()}
+        layout
+        {...listItemMotion}
+        transition={itemTransition}
         drag="y"
         dragControls={dragControls}
+        dragElastic={0.08}
         dragListener={false}
+        dragMomentum={false}
+        dragTransition={{
+          bounceStiffness: reducedMotion ? 1000000 : 920,
+          bounceDamping: reducedMotion ? 10000000 : 58,
+          power: reducedMotion ? 0 : 0.08,
+          timeConstant: reducedMotion ? 120 : 160,
+        }}
         value={card}
-        whileDrag={reducedMotion ? { zIndex: 4 } : { scale: 1.01, zIndex: 4 }}
+        whileDrag={reducedMotion ? { zIndex: 24 } : { scale: 1.012, y: -2, zIndex: 24 }}
         onDragStart={() => setIsDragging(true)}
         onDragEnd={() => {
+          if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+            navigator.vibrate(8);
+          }
           setIsDragging(false);
           resetLongPressState();
         }}
@@ -557,15 +682,19 @@ function ManageShipReorderItem({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerEnd}
           >
-            <span className="material-symbols-rounded manage-ship-card__reorder-icon" aria-hidden="true">
-              drag_indicator
-            </span>
+            <AppIcon
+              className="manage-ship-card__reorder-icon"
+              name="drag_indicator"
+              preset="reorder"
+              tone="current"
+            />
             <span className="manage-ship-card__reorder-label">길게 눌러 순서 변경</span>
           </button>
 
           <ManageShipCard
             card={card}
             editable
+            isDragging={isDragging}
             originalCard={originalCard}
             showDeleteButton
             showEditButton={false}
@@ -575,9 +704,8 @@ function ManageShipReorderItem({
           />
         </div>
       </Reorder.Item>
-
-      {showDivider ? <div className="section-divider" /> : null}
-    </motion.div>
+      {showDivider ? <div className="section-divider manage-edit-screen__reorder-divider" /> : null}
+    </>
   );
 }
 
@@ -596,7 +724,9 @@ function ManageAlertModal({
   const cardMotion = getModalCardMotion(reducedMotion);
   const confirmButtonClassName = [
     'manage-discard-modal__button',
-    confirmTone === 'danger' ? 'manage-discard-modal__button--danger' : 'manage-discard-modal__button--neutral',
+    confirmTone === 'danger'
+      ? 'manage-discard-modal__button--danger'
+      : 'manage-discard-modal__button--neutral',
   ]
     .filter(Boolean)
     .join(' ');
@@ -665,10 +795,21 @@ function ManageShipImportModal({
               checked={replaceSameRegistration}
               onChange={(event) => onReplaceSameRegistrationChange(event.target.checked)}
             />
-            <span className={`manage-ship-import-modal__checkbox-box ${replaceSameRegistration ? 'manage-ship-import-modal__checkbox-box--checked' : ''}`}>
-              {replaceSameRegistration ? <img className="manage-ship-import-modal__checkbox-icon" src={assets.manageImportCheck} alt="" /> : null}
+            <span
+              className={`manage-ship-import-modal__checkbox-box ${replaceSameRegistration ? 'manage-ship-import-modal__checkbox-box--checked' : ''}`}
+            >
+              {replaceSameRegistration ? (
+                <AppIcon
+                  className="manage-ship-import-modal__checkbox-icon"
+                  name="check_small"
+                  preset="checkbox"
+                  tone="on-accent"
+                />
+              ) : null}
             </span>
-            <span className="manage-ship-import-modal__checkbox-label">어선정보가 같은 어선은 대체하기</span>
+            <span className="manage-ship-import-modal__checkbox-label">
+              어선정보가 같은 어선은 대체하기
+            </span>
           </label>
         </div>
         <div className="manage-discard-modal__actions">
@@ -814,7 +955,13 @@ function ManageSavedToast({ message, onDismiss }) {
         style={{ opacity: fadeOpacity }}
       >
         <motion.div className="manage-saved-toast" {...toastMotion}>
-          <img className="manage-saved-toast__icon" src={assets.toastCheckCircle} alt="" />
+          <AppIcon
+            className="manage-saved-toast__icon"
+            name="check_circle"
+            preset="action"
+            glyphSize={24}
+            tone="accent"
+          />
           <span className="manage-saved-toast__message">{message}</span>
         </motion.div>
       </div>
@@ -849,16 +996,22 @@ export function DataManagementShipEditScreen({
   const itemRefs = useRef(new Map());
   const previousCardIdsRef = useRef(cards.map((card) => card.id));
   const keyboardBlurTimeoutRef = useRef(null);
+  const titleRef = useRef(null);
   const viewportBaseHeightRef = useRef(0);
   const [keyboardFocused, setKeyboardFocused] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [keyboardTitleHidden, setKeyboardTitleHidden] = useState(false);
   const [viewportTop, setViewportTop] = useState(0);
   const [recentlyAddedCardId, setRecentlyAddedCardId] = useState(null);
   const visibleCards = normalizedQuery
     ? cards.filter((card) =>
-        matchesSearchQuery([card.searchKey, card.title, card.registration, card.port, card.business], searchQuery, {
-          choseongFields: [card.searchKey, card.title],
-        }),
+        matchesSearchQuery(
+          [card.searchKey, card.title, card.registration, card.port, card.business],
+          searchQuery,
+          {
+            choseongFields: [card.searchKey, card.title],
+          },
+        ),
       )
     : cards;
 
@@ -895,9 +1048,12 @@ export function DataManagementShipEditScreen({
     const frameId = window.requestAnimationFrame(() => {
       scrollToTarget();
     });
-    const timeoutId = window.setTimeout(() => {
-      setRecentlyAddedCardId((current) => (current === recentlyAddedCardId ? null : current));
-    }, reducedMotion ? 120 : 420);
+    const timeoutId = window.setTimeout(
+      () => {
+        setRecentlyAddedCardId((current) => (current === recentlyAddedCardId ? null : current));
+      },
+      reducedMotion ? 120 : 420,
+    );
 
     return () => {
       window.cancelAnimationFrame(frameId);
@@ -918,6 +1074,7 @@ export function DataManagementShipEditScreen({
     if (!keyboardFocused) {
       viewportBaseHeightRef.current = 0;
       setKeyboardOpen(false);
+      setKeyboardTitleHidden(false);
       setViewportTop(0);
       return undefined;
     }
@@ -953,6 +1110,75 @@ export function DataManagementShipEditScreen({
     };
   }, [keyboardFocused]);
 
+  const updateKeyboardTitleVisibility = useCallback(() => {
+    if (
+      !keyboardOpen ||
+      !(titleRef.current instanceof HTMLElement) ||
+      !(contentRef.current instanceof HTMLElement)
+    ) {
+      setKeyboardTitleHidden(false);
+      return;
+    }
+
+    const activeElement = document.activeElement;
+
+    if (
+      !(activeElement instanceof HTMLInputElement) &&
+      !(activeElement instanceof HTMLTextAreaElement)
+    ) {
+      setKeyboardTitleHidden(false);
+      return;
+    }
+
+    if (!contentRef.current.contains(activeElement)) {
+      setKeyboardTitleHidden(false);
+      return;
+    }
+
+    const titleRect = titleRef.current.getBoundingClientRect();
+    const activeRect = activeElement.getBoundingClientRect();
+
+    setKeyboardTitleHidden(titleRect.bottom >= activeRect.top - 12);
+  }, [keyboardOpen]);
+
+  useEffect(() => {
+    if (!keyboardOpen) {
+      setKeyboardTitleHidden(false);
+      return undefined;
+    }
+
+    let frameId = null;
+
+    const scheduleVisibilityUpdate = () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      frameId = window.requestAnimationFrame(updateKeyboardTitleVisibility);
+    };
+
+    scheduleVisibilityUpdate();
+
+    const viewport = window.visualViewport;
+    const scrollTarget = contentRef.current;
+
+    viewport?.addEventListener('resize', scheduleVisibilityUpdate);
+    viewport?.addEventListener('scroll', scheduleVisibilityUpdate);
+    scrollTarget?.addEventListener('scroll', scheduleVisibilityUpdate, { passive: true });
+    window.addEventListener('resize', scheduleVisibilityUpdate);
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      viewport?.removeEventListener('resize', scheduleVisibilityUpdate);
+      viewport?.removeEventListener('scroll', scheduleVisibilityUpdate);
+      scrollTarget?.removeEventListener('scroll', scheduleVisibilityUpdate);
+      window.removeEventListener('resize', scheduleVisibilityUpdate);
+    };
+  }, [keyboardOpen, updateKeyboardTitleVisibility, viewportTop]);
+
   const setItemRef = (cardId) => (node) => {
     if (node) {
       itemRefs.current.set(cardId, node);
@@ -963,7 +1189,10 @@ export function DataManagementShipEditScreen({
   };
 
   const handleFocusCapture = (event) => {
-    if (!(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) {
+    if (
+      !(event.target instanceof HTMLInputElement) &&
+      !(event.target instanceof HTMLTextAreaElement)
+    ) {
       return;
     }
 
@@ -973,10 +1202,16 @@ export function DataManagementShipEditScreen({
     }
 
     setKeyboardFocused(true);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(updateKeyboardTitleVisibility);
+    });
   };
 
   const handleBlurCapture = (event) => {
-    if (!(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) {
+    if (
+      !(event.target instanceof HTMLInputElement) &&
+      !(event.target instanceof HTMLTextAreaElement)
+    ) {
       return;
     }
 
@@ -996,34 +1231,42 @@ export function DataManagementShipEditScreen({
         onFocusCapture={handleFocusCapture}
         onBlurCapture={handleBlurCapture}
       >
-        <ManageSubpageTopBar title="선박 DB 편집하기" saveActive={dirty} onAdd={onAdd} onBack={onBack} onSave={dirty ? onSave : undefined} />
+        <ManageSubpageTopBar
+          title="선박 DB 편집하기"
+          saveActive={dirty}
+          titleHidden={keyboardTitleHidden}
+          titleRef={titleRef}
+          onAdd={onAdd}
+          onBack={onBack}
+          onSave={dirty ? onSave : undefined}
+        />
 
         {reorderEnabled ? (
-          <Reorder.Group
-            as="div"
-            axis="y"
-            className="manage-edit-screen__content manage-edit-screen__reorder-list"
-            layoutScroll
-            ref={contentRef}
-            values={cards}
-            onReorder={onReorder}
-          >
-            <AnimatePresence initial={false}>
-              {cards.map((card, index) => (
-                <ManageShipReorderItem
-                  key={card.id}
-                  card={card}
-                  isEntering={card.id === recentlyAddedCardId}
-                  itemRef={setItemRef(card.id)}
-                  originalCard={originalCards.find((item) => item.id === card.id)}
-                  showDivider={index < cards.length - 1}
-                  onDelete={onDelete}
-                  onFieldChange={onFieldChange}
-                  onImageChange={onImageChange}
-                />
-              ))}
-            </AnimatePresence>
-          </Reorder.Group>
+          <motion.div ref={contentRef} className="manage-edit-screen__content" layoutScroll>
+            <Reorder.Group
+              as="div"
+              axis="y"
+              className="manage-edit-screen__reorder-list"
+              values={cards}
+              onReorder={onReorder}
+            >
+              <AnimatePresence initial={false}>
+                {cards.map((card, index) => (
+                  <ManageShipReorderItem
+                    key={card.id}
+                    card={card}
+                    isEntering={card.id === recentlyAddedCardId}
+                    itemRef={setItemRef(card.id)}
+                    originalCard={originalCards.find((item) => item.id === card.id)}
+                    showDivider={index < cards.length - 1}
+                    onDelete={onDelete}
+                    onFieldChange={onFieldChange}
+                    onImageChange={onImageChange}
+                  />
+                ))}
+              </AnimatePresence>
+            </Reorder.Group>
+          </motion.div>
         ) : (
           <div ref={contentRef} className="manage-edit-screen__content">
             <AnimatePresence initial={false}>
@@ -1055,8 +1298,16 @@ export function DataManagementShipEditScreen({
 
         <ManageSearchBar value={searchQuery} onChange={onSearchChange} onClear={onSearchClear} />
 
-        <AnimatePresence>{toast ? <ManageSavedToast key={toast.id} message={toast.message} onDismiss={onDismissToast} /> : null}</AnimatePresence>
-        <AnimatePresence>{showDiscardModal ? <ManageAlertModal onCancel={onDismissDiscard} onConfirm={onConfirmDiscard} /> : null}</AnimatePresence>
+        <AnimatePresence>
+          {toast ? (
+            <ManageSavedToast key={toast.id} message={toast.message} onDismiss={onDismissToast} />
+          ) : null}
+        </AnimatePresence>
+        <AnimatePresence>
+          {showDiscardModal ? (
+            <ManageAlertModal onCancel={onDismissDiscard} onConfirm={onConfirmDiscard} />
+          ) : null}
+        </AnimatePresence>
       </section>
     </main>
   );
