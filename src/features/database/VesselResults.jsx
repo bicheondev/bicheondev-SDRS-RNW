@@ -1,8 +1,32 @@
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { forwardRef, memo, useCallback } from 'react';
 
-import { getPressMotion } from '../../motion.js';
+import { getPressMotion, motionTokens } from '../../motion.js';
 import { AppIcon } from '../../components/Icons.jsx';
+
+function getViewModeMotion(reducedMotion) {
+  if (reducedMotion) {
+    return {
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+      transition: {
+        duration: motionTokens.reduced.duration,
+        ease: motionTokens.ease.linear,
+      },
+    };
+  }
+
+  return {
+    initial: { opacity: 0, y: 12, scale: 0.995, filter: 'blur(3px)' },
+    animate: { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' },
+    exit: { opacity: 0, y: -12, scale: 0.995, filter: 'blur(3px)' },
+    transition: {
+      duration: motionTokens.duration.fast,
+      ease: motionTokens.ease.ios,
+    },
+  };
+}
 
 function InfoTable({ vessel }) {
   return (
@@ -182,6 +206,8 @@ export const VesselResults = forwardRef(function VesselResults(
   { className = 'main-content', compact, vessels, onImageClick, ...contentProps },
   ref,
 ) {
+  const reducedMotion = useReducedMotion() ?? false;
+  const viewModeMotion = getViewModeMotion(reducedMotion);
   const handleImageClick = useCallback(
     (selectedVessel, sourceThumbnail) => {
       onImageClick(selectedVessel, vessels, sourceThumbnail);
@@ -191,25 +217,31 @@ export const VesselResults = forwardRef(function VesselResults(
 
   return (
     <div className={className} ref={ref} {...contentProps}>
-      <div className="vessel-results-mode">
-        {vessels.length === 0 ? (
-          <VesselEmptyState />
-        ) : compact ? (
-          vessels.map((vessel, index) => (
-            <div key={vessel.id}>
-              <CompactVesselCard vessel={vessel} onImageClick={handleImageClick} />
-              {index < vessels.length - 1 ? <div className="section-divider" /> : null}
-            </div>
-          ))
-        ) : (
-          vessels.map((vessel, index) => (
-            <div key={vessel.id}>
-              <VesselCard vessel={vessel} onImageClick={handleImageClick} />
-              {index < vessels.length - 1 ? <div className="section-divider" /> : null}
-            </div>
-          ))
-        )}
-      </div>
+      <AnimatePresence initial={false} mode="wait">
+        <motion.div
+          key={compact ? 'compact' : 'card'}
+          className="vessel-results-mode"
+          {...viewModeMotion}
+        >
+          {vessels.length === 0 ? (
+            <VesselEmptyState />
+          ) : compact ? (
+            vessels.map((vessel, index) => (
+              <div key={vessel.id}>
+                <CompactVesselCard vessel={vessel} onImageClick={handleImageClick} />
+                {index < vessels.length - 1 ? <div className="section-divider" /> : null}
+              </div>
+            ))
+          ) : (
+            vessels.map((vessel, index) => (
+              <div key={vessel.id}>
+                <VesselCard vessel={vessel} onImageClick={handleImageClick} />
+                {index < vessels.length - 1 ? <div className="section-divider" /> : null}
+              </div>
+            ))
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 });
