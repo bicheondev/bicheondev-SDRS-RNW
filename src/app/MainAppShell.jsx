@@ -7,6 +7,7 @@ import { useColorMode } from '../hooks/useColorMode.js';
 import { useStackNavigation } from '../hooks/useStackNavigation.js';
 import AnimatedScreen from '../components/layout/AnimatedScreen.jsx';
 import BottomTab from '../components/layout/BottomTab.jsx';
+import { motionDurationsMs } from '../motion.js';
 import { appReducer, initialAppState } from './appReducer.js';
 import { useAppBootstrap } from './useAppBootstrap.js';
 
@@ -161,12 +162,14 @@ export default function MainAppShell({ isActive, onLogout, reducedMotion }) {
   }, []);
 
   const handleLogout = useCallback(() => {
-    dispatch({ type: 'logout' });
-    databasePage.resetDatabasePage();
-    shipEditor.resetSession();
-    manageNavigation.reset('manageHome');
-    menuNavigation.reset('menu');
     onLogout();
+    window.setTimeout(() => {
+      dispatch({ type: 'logout' });
+      databasePage.resetDatabasePage();
+      shipEditor.resetSession();
+      manageNavigation.reset('manageHome');
+      menuNavigation.reset('menu');
+    }, motionDurationsMs.normal + 40);
   }, [databasePage, manageNavigation, menuNavigation, onLogout, shipEditor]);
 
   const handleBottomTabDbClick = useCallback(() => {

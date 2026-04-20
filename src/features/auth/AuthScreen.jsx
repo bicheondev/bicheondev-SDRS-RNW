@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { useRef } from 'react';
 
 export function AuthScreen({
   focusedField,
@@ -11,6 +12,15 @@ export function AuthScreen({
   password,
   username,
 }) {
+  const passwordInputRef = useRef(null);
+
+  const handleUsernameKeyDown = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      passwordInputRef.current?.focus();
+    }
+  };
+
   return (
     <main className="app-shell app-shell--login">
       <section className="phone-screen phone-screen--login">
@@ -48,6 +58,7 @@ export function AuthScreen({
               onChange={(event) => onUsernameChange(event.target.value)}
               onFocus={() => onFieldFocus('username')}
               onBlur={onFieldBlur}
+              onKeyDown={handleUsernameKeyDown}
             />
           </label>
 
@@ -55,6 +66,7 @@ export function AuthScreen({
             className={`input-shell ${focusedField === 'password' ? 'input-shell--focused' : ''}`}
           >
             <input
+              ref={passwordInputRef}
               className="login-input"
               type="password"
               value={password}
@@ -67,7 +79,12 @@ export function AuthScreen({
           </label>
         </form>
 
-        <p className="app-version">선박DB정보체계 버전 1.0</p>
+        <p
+          className={`app-version ${focusedField ? 'app-version--hidden' : ''}`}
+          aria-hidden={focusedField ? 'true' : undefined}
+        >
+          선박DB정보체계 버전 1.0
+        </p>
 
         <motion.button
           className={`login-button pressable-control pressable-control--filled ${isFilled ? 'login-button--active' : ''}`}
