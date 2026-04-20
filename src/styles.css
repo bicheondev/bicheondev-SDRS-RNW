@@ -1638,7 +1638,7 @@ img {
 }
 
 .info-table__cell--label {
-  background: var(--color-bg-surface-muted);
+  background: var(--slate-50);
   font-weight: 600;
 }
 
