@@ -1,0 +1,100 @@
+@import '../../src/styles/index.css';
+
+@font-face {
+  font-family: 'Pretendard GOV Variable';
+  src: url('../assets/fonts/PretendardGOV-Regular.otf') format('opentype');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: 'Pretendard GOV Variable';
+  src: url('../assets/fonts/PretendardGOV-Medium.otf') format('opentype');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 500;
+}
+
+@font-face {
+  font-family: 'Pretendard GOV Variable';
+  src: url('../assets/fonts/PretendardGOV-SemiBold.otf') format('opentype');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 600;
+}
+
+@font-face {
+  font-family: 'Pretendard GOV Variable';
+  src: url('../assets/fonts/PretendardGOV-Bold.otf') format('opentype');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 700;
+}
+
+@font-face {
+  font-family: 'Pretendard GOV';
+  src: url('../assets/fonts/PretendardGOV-Regular.otf') format('opentype');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: 'Pretendard GOV';
+  src: url('../assets/fonts/PretendardGOV-Medium.otf') format('opentype');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 500;
+}
+
+@font-face {
+  font-family: 'Pretendard GOV';
+  src: url('../assets/fonts/PretendardGOV-SemiBold.otf') format('opentype');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 600;
+}
+
+@font-face {
+  font-family: 'Pretendard GOV';
+  src: url('../assets/fonts/PretendardGOV-Bold.otf') format('opentype');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 700;
+}
+
+@font-face {
+  font-family: 'Material Symbols Rounded';
+  src: url('../assets/fonts/MaterialSymbolsRounded.ttf') format('truetype');
+  font-display: block;
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: 'Material Icons Round';
+  src: url('../assets/fonts/MaterialIconsRound-Regular.otf') format('opentype');
+  font-display: block;
+  font-style: normal;
+  font-weight: 400;
+}
+
+.rnw-auth-text-input {
+  outline: none;
+}
+
+@media (max-width: 480px) {
+  .rnw-auth-shell {
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    padding: 0 !important;
+  }
+
+  .rnw-auth-phone {
+    box-shadow: none !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    width: 100% !important;
+  }
+}
